@@ -2,12 +2,28 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* @custom-variant dark (&:is(.dark *)); */
 
-@theme {
+/* @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+} */
+
+/* 1. Configure Tailwind v4 Theme */
+@theme {
+  /* This overrides the default font-sans utility to use Nunito Sans */
+  --font-sans: var(--font-nunito-sans), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+/* 2. Apply your specific font variations globally */
+@layer base {
+  body {
+    font-optical-sizing: auto;
+    font-variation-settings: "wdth" 100, "YTLC" 500;
+  }
+}
+
+/* ... the rest of your shadcn CSS variables ... */
 
 @theme inline {
   --font-heading: var(--font-sans);
@@ -121,7 +137,7 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-@layer base {
+/* @layer base {
   * {
     @apply border-border outline-ring/50;
   }
@@ -131,4 +147,4 @@
   html {
     @apply font-sans;
   }
-}
+} */

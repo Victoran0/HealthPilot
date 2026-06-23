@@ -15,10 +15,10 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
-const geist = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
-});
+// const geist = Geist({
+//   subsets: ["latin"],
+//   variable: "--font-geist-sans",
+// });
 
 // Configure the font
 const nunitoSans = Nunito_Sans({
@@ -33,7 +33,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${geist.variable} ${nunitoSans.variable}`}>
+    <html lang="en" className={`${nunitoSans.variable}`}>
       <body>
         <TRPCReactProvider>{children}</TRPCReactProvider>
       </body>
