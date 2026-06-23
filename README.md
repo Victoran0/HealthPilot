@@ -1,7 +1,7 @@
 # 🏥 Multi-Modal Agentic AI System for Medical Diagnosis and Triage
 
 > **University of Hertfordshire — Final Year Group Project**  
-> An autonomous AI agent that diagnoses chest and cardiovascular conditions by sequentially analysing patient symptoms, chest X-ray images, and structured clinical records — then triages and books appropriate specialist appointments.
+> An autonomous AI agent that diagnoses health conditions by sequentially analysing patient symptoms, chest X-ray images, and structured clinical records — then triages and books appropriate specialist appointments.
 >
 > **Week 6 update:** the patient-facing **Response QA model** is now complete. After evaluating three medical LLM families (OpenMed → OpenBioLLM → MedGemma), the response node is delivered as **MedGemma-4B-IT with a UK-localised system prompt and few-shot prompting** — see _Model 3_ and the _Model-Direction Journey_ section below.
 
