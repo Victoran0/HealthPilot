@@ -6,6 +6,7 @@ import { DefaultChatTransport } from "ai";
 import { motion } from "framer-motion";
 import { Activity, Send, User, ArrowLeft, ShieldAlert, StopCircle } from "lucide-react";
 import Link from "next/link";
+import HeartbeatCanvas from "@/components/HeartBeatCanvas";
 
 export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -21,18 +22,21 @@ export default function ChatPage() {
   const isLoading = status === "submitted" || status === "streaming";
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Added block: "end" to ensure it only scrolls the container, not the whole page
+    scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, status]);
 
   return (
-    <div className="flex flex-col h-screen bg-[#020617] text-slate-200 overflow-hidden selection:bg-blue-500/30 relative">
-      
-      {/* FIXED GLASSMORPHISM: Added glowing background orbs so the backdrop-blur actually has something to blur! */}
+    // CHANGED: Replaced `flex h-screen` with `fixed inset-0`. This locks the app to the viewport.
+    <div className="fixed inset-0 bg-[#020617] text-slate-200 overflow-hidden selection:bg-blue-500/30">
+
+      {/* Backgrounds */}
+      <HeartbeatCanvas />
       <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-blue-600/20 blur-[120px] pointer-events-none z-0" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-teal-500/10 blur-[120px] pointer-events-none z-0" />
 
-      {/* Header - Increased transparency to make the glass effect pop */}
-      <header className="relative z-20 flex items-center justify-between px-6 py-4 bg-[#020617]/60 backdrop-blur-xl border-b border-white/10 shadow-lg">
+      {/* HEADER: Locked to the top */}
+      <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4  border-b border-white/10  backdrop-blur-sm shadow-[0_0_15px_rgba(37,99,235,0.6)] bg-slate-950/60">
         <div className="flex items-center gap-4">
           <Link 
             href="/" 
@@ -52,11 +56,11 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Chat Messages Area */}
-      <main className="flex-1 overflow-y-auto p-6 relative z-10 scroll-smooth">
-        <div className="max-w-3xl mx-auto space-y-8 pb-32 pt-4">
+      {/* CHAT AREA: Takes up the full screen but has padding so it doesn't hide behind the header/footer */}
+      <main className="absolute inset-0 overflow-y-auto px-6 pt-24 pb-40 z-10 scroll-smooth">
+        <div className="max-w-3xl mx-auto space-y-8">
           
-          {/* FIXED INITIAL MESSAGE: Hardcoded welcome message guarantees it shows up immediately */}
+          {/* Hardcoded welcome message */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -138,8 +142,8 @@ export default function ChatPage() {
         </div>
       </main>
 
-      {/* Input Area - Increased transparency for glass effect */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#020617] via-[#020617]/90 to-transparent z-20">
+      {/* INPUT AREA: Locked to the bottom */}
+      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#020617] via-[#020617]/90 to-transparent z-50">
         <div className="max-w-3xl mx-auto">
           <form
             onSubmit={(e) => {
