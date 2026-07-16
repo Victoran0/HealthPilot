@@ -6,6 +6,8 @@ import { Geist } from "next/font/google";
 
 import { TRPCReactProvider } from "@/trpc/react";
 
+import wakeSpaces from "@/lib/wake_spaces";
+
 export const metadata: Metadata = {
   title: { 
     default: "Health Pilot",
@@ -14,6 +16,8 @@ export const metadata: Metadata = {
   description: "A Multi Modal AI agent that diagnoses health conditions by sequentially analysing patient symptoms, chest X-ray images, and structured clinical records — then triages and books appropriate specialist appointments.",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
+
+await wakeSpaces().then((results) => {console.log("[wake] All Spaces woken:", results);}).catch((err) => {console.error("[wake] wakeSpaces failed:", err);});
 
 // const geist = Geist({
 //   subsets: ["latin"],

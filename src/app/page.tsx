@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import MedicalCanvas from "@/components/MedicalCanvas";
 import { Activity, Brain, Shield, Stethoscope, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import {generateId} from "@/lib/generate_id";
 
 export default function HealthPilotLanding() {
   const containerRef = useRef(null);
@@ -41,6 +42,13 @@ export default function HealthPilotLanding() {
       transition: { staggerChildren: 0.2 },
     },
   };
+
+  const [assessmentId, setAssessmentId] = useState<string>(""); // Generate a unique ID for this assessment session
+
+  useEffect(() => {
+    const id = generateId();
+    setAssessmentId(id);
+  }, []);
 
   return (
     // Removed text-slate-900 from main wrapper so we can control dark/light sections
@@ -107,7 +115,7 @@ export default function HealthPilotLanding() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Link
-              href="/chat"
+              href={`/assessment/${assessmentId}`}
               className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#38bdf8] text-white px-8 py-3 rounded-md font-medium hover:bg-white hover:text-[#38bdf8] transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)]"
             >
               Start Triage Assessment <ArrowRight className="w-4 h-4" />

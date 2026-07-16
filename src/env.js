@@ -15,8 +15,13 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
-    GEMINI_API_KEY: z.string(),
+    GOOGLE_API_KEY: z.string(),
     GROQ_API_KEY: z.string(),
+    HF_TOKEN: z.string(),
+    INFERENCE_API_TOKEN: z.string(),
+    HF_PROVIDER: z.string(),
+    CHESTVISION_ENDPOINT: z.string().url(),
+    EHR_ENDPOINT: z.string().url(),
   },
 
   /**
@@ -36,8 +41,13 @@ export const env = createEnv({
     AUTH_SECRET: process.env.AUTH_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
+    HF_TOKEN: process.env.HF_TOKEN,
+    INFERENCE_API_TOKEN: process.env.INFERENCE_API_TOKEN,
+    HF_PROVIDER: process.env.HF_PROVIDER,
+    CHESTVISION_ENDPOINT: process.env.CHESTVISION_ENDPOINT,
+    EHR_ENDPOINT: process.env.EHR_ENDPOINT,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
