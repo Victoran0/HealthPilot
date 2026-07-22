@@ -37,7 +37,7 @@ export async function chestVisionNode(state: HealthPilotState) {
     // Same auth pattern as the EHR Space: INFERENCE_API_TOKEN, not HF_TOKEN.
     // Do NOT set Content-Type — fetch must set the multipart boundary itself.
     const headers: Record<string, string> = {};
-    if (process.env.CHESTVISION_INFERENCE_TOKEN) {
+    if (process.env.INFERENCE_API_TOKEN) {
       headers.Authorization = `Bearer ${process.env.INFERENCE_API_TOKEN}`;
     }
 
@@ -104,7 +104,7 @@ export async function chestVisionNode(state: HealthPilotState) {
 function dataUrlToBlob(dataUrl: string): Blob | null {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
   if (!match) return null;
-  
+
   const [, mime, b64] = match;
 
   if (!mime || !b64) return null;
@@ -129,10 +129,10 @@ export async function ehrNode(state: HealthPilotState) {
 
   try {
     // NOTE: the EHR Space auth token is INFERENCE_API_TOKEN (set in server.py), NOT your
-    // HF_TOKEN. They're different secrets. If EHR_INFERENCE_TOKEN is unset we send no
+    // HF_TOKEN. They're different secrets. If INFERENCE_API_TOKEN is unset we send no
     // Authorization header (works only if the Space runs with ALLOW_NO_AUTH=1).
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (process.env.EHR_INFERENCE_TOKEN) {
+    if (process.env.INFERENCE_API_TOKEN) {
       headers.Authorization = `Bearer ${process.env.INFERENCE_API_TOKEN}`;
     }
 
@@ -154,7 +154,7 @@ export async function ehrNode(state: HealthPilotState) {
           medicationFlags: [],
           note:
             res.status === 401
-              ? "EHR model auth failed (401). Check EHR_INFERENCE_TOKEN matches the Space's INFERENCE_API_TOKEN."
+              ? "EHR model auth failed (401). Check INFERENCE_API_TOKEN matches the Space's INFERENCE_API_TOKEN."
               : res.status === 503
                 ? "EHR model still warming up or busy (503). Assessment proceeds without it."
                 : `EHR model unavailable (${res.status}). Check EHR_ENDPOINT points at the *.hf.space root.`,

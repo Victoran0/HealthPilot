@@ -22,6 +22,10 @@ export const env = createEnv({
     HF_PROVIDER: z.string(),
     CHESTVISION_ENDPOINT: z.string().url(),
     EHR_ENDPOINT: z.string().url(),
+    UPSTASH_VECTOR_REST_URL: z.string().url(),
+    UPSTASH_VECTOR_REST_TOKEN: z.string(),
+    OPENROUTER_API_KEY: z.string(),
+    
   },
 
   /**
@@ -48,6 +52,9 @@ export const env = createEnv({
     HF_PROVIDER: process.env.HF_PROVIDER,
     CHESTVISION_ENDPOINT: process.env.CHESTVISION_ENDPOINT,
     EHR_ENDPOINT: process.env.EHR_ENDPOINT,
+    UPSTASH_VECTOR_REST_URL: process.env.UPSTASH_VECTOR_REST_URL,
+    UPSTASH_VECTOR_REST_TOKEN: process.env.UPSTASH_VECTOR_REST_TOKEN,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

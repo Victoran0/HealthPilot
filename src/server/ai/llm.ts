@@ -1,36 +1,91 @@
 import { ChatGroq } from "@langchain/groq";
-import { HfInference } from "@huggingface/inference";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-
-/** Structuring models (Recipient, Inquirer). These stream JSON — never surface their tokens. */
-export const conversationalLLM = new ChatGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_API_KEY,
-    model: "gemini-3.5-Flash",
-    temperature: 0.1,
-    maxRetries: 2,
-    // other params...
-})
-
-
-
-/** The ONLY model whose tokens are allowed to reach the patient. Tagged in triage.ts. */
-export const patientVoiceLLM = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.1-8b-instant",
-  temperature: 0.3,
-  maxTokens: 1024,
-});
-
-const hf = new HfInference(process.env.HF_TOKEN);
-export const MEDGEMMA_MODEL = "google/medgemma-27b-text-it";
+import { InferenceClient } from "@huggingface/inference";
 
 /**
- * MedGemma-27B, streaming.
+ * PER-TASK MODEL REGISTRY
+ * =======================
+ * One model per job, not one model for everything. Two reasons:
+ *  1. Rate limits are per-model on Groq's free tier, so spreading tasks across models
+ *     multiplies effective throughput — one task hitting its limit no longer takes down
+ *     the whole agent.
+ *  2. Tasks have different needs — structuring JSON, writing prose, and clinical-note
+ *     generation are not the same workload.
  *
- * The HF SDK is not a LangChain Runnable, so LangGraph's streamEvents will never see
- * inside it. `onToken` is how we bridge that gap — the analyser node forwards each
- * token out as a custom event.
+ * All gpt-oss right now (reliable tool-calling + jsonSchema). Swap any single line without
+ * touching the nodes. AVOID reasoning/preview models (qwen3.6-27b) for STRUCTURED tasks —
+ * they fail both jsonSchema (open-oss only) and tool-calling.
  */
+
+function groq(
+  model: string,
+  opts: { temperature?: number; maxTokens?: number; reasoningEffort?: "none" | "default" | "low" | "medium" | "high" } = {},
+) {
+  return new ChatGroq({
+    apiKey: process.env.GROQ_API_KEY,
+    model,
+    temperature: opts.temperature ?? 0.1,
+    maxTokens: opts.maxTokens ?? 2048,
+    // Qwen3 accepts "none"/"default"; gpt-oss accepts "low"/"medium"/"high". Only set it
+    // when asked, so we don't send an unsupported value to a model that rejects it.
+    ...(opts.reasoningEffort ? { reasoningEffort: opts.reasoningEffort } : {}),
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Task-specific models. Env overrides let you retune without a deploy. */
+/* ------------------------------------------------------------------ */
+
+// export const conversationalLLM = new ChatOpenRouter({
+//   apiKey: process.env.OPENROUTER_API_KEY,
+//   model: "nvidia/nemotron-3-super-120b-a12b:free",
+//   temperature: 0.1,
+//   maxTokens: 2056,
+// });
+
+/** RecipientAgent — structures the HPI (large JSON schema). Needs reliable structured output. */
+export const recipientLLM = groq("openai/gpt-oss-20b", {
+  temperature: 0.1,
+  maxTokens: 2048,
+});
+
+/** InquirerAgent — one discriminating question (small JSON). Fast model is fine. */
+export const inquirerLLM = groq("qwen/qwen3.6-27b", {
+  temperature: 0.2,
+  maxTokens: 1024,
+  
+  reasoningEffort: "none",
+});
+
+/** TriageAgent — patient-facing prose. Warmer, streamed. The ONLY patient-visible text. */
+export const triageLLM = groq("qwen/qwen3.6-27b", {
+  temperature: 0.3,
+  maxTokens: 1024,
+  reasoningEffort: "none",
+});
+
+/** Clinical SOAP note generation for the EHR text branch. Isolated rate limit so a note
+ *  failure never blocks the interview. */
+/** Clinical SOAP note generation — free-text prose, not structured, so a reasoning model
+ *  is fine here and offloads work from the gpt-oss rate limits. reasoning_effort:"none"
+ *  disables Qwen's reasoning tokens so they never leak into the note the encoder reads. */
+export const noteLLM = groq("qwen/qwen3.6-27b", {
+  temperature: 0.2,
+  maxTokens: 512,
+  reasoningEffort: "none",
+});
+
+/* ------------------------------------------------------------------ */
+/* Backwards-compat aliases so existing imports keep working.          */
+/* ------------------------------------------------------------------ */
+export const conversationalLLM = recipientLLM;
+export const patientVoiceLLM = triageLLM;
+
+/* ------------------------------------------------------------------ */
+/* MedGemma-27B — the primary diagnostic model, via HF (not Groq).     */
+/* ------------------------------------------------------------------ */
+const hf = new InferenceClient(process.env.HF_TOKEN);
+export const MEDGEMMA_MODEL = "google/medgemma-27b-text-it";
+
 export async function medgemmaStream(opts: {
   system: string;
   user: string;
@@ -39,14 +94,10 @@ export async function medgemmaStream(opts: {
   temperature?: number;
 }): Promise<string> {
   let full = "";
-
   const stream = hf.chatCompletionStream({
     model: MEDGEMMA_MODEL,
-    // Valid providers include: hf-inference, groq, together, fireworks-ai, nscale,
-    // novita, replicate, cerebras, deepinfra, ... "nebius" is NOT valid (that error you
-    // saw). "auto" lets HF pick a provider that actually serves this model — safest
-    // default. Pin a specific one only if you know it serves google/medgemma-27b-text-it.
-    provider: (process.env.HF_PROVIDER as never) ?? "auto",
+    // featherless-ai serves medgemma-27b conversationally (verified). Never "auto".
+    provider: (process.env.HF_PROVIDER as never) ?? "featherless-ai",
     messages: [
       { role: "system", content: opts.system },
       { role: "user", content: opts.user },
@@ -62,11 +113,9 @@ export async function medgemmaStream(opts: {
       await opts.onToken?.(delta);
     }
   }
-
   return full;
 }
 
-/** Non-streaming variant, used by the analyser node (its output is JSON, not prose). */
 export async function medgemmaComplete(opts: {
   system: string;
   user: string;

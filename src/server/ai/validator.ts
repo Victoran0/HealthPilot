@@ -79,10 +79,15 @@ export type HPI = z.infer<typeof HPISchema>;
 export const InquirySchema = z.object({
   /** null => the inquirer believes intake is complete. */
   question: z.string().nullable(),
-  rationale: z.string(),
-  /** Artefacts to request from the patient this round, e.g. a chest X-ray upload. */
-  requestedArtifacts: z.array(z.enum(["CHEST_XRAY", "ECG", "BLOODS", "ECHO", "NONE"])),
-  intakeComplete: z.boolean(),
+  rationale: z.string().default(""),
+  /**
+   * Artefacts to request this round. Defaulted to [] because Groq's JSON mode sometimes
+   * omits empty arrays entirely — without the default the node crashes on undefined.
+   */
+  requestedArtifacts: z
+    .array(z.enum(["CHEST_XRAY", "ECG", "BLOODS", "ECHO", "NONE"]))
+    .default([]),
+  intakeComplete: z.boolean().default(false),
 });
 export type Inquiry = z.infer<typeof InquirySchema>;
 

@@ -9,13 +9,6 @@ import Link from "next/link";
 import HeartbeatCanvas from "@/components/HeartBeatCanvas";
 import { useParams } from "next/navigation";
 
-/**
- * Downscale + re-encode before base64.
- *
- * A raw chest X-ray can be several MB, and base64 inflates it by ~33%. Vercel caps
- * serverless request bodies at 4.5 MB, so an untouched upload will 413 in production.
- * 1024px on the long edge preserves plenty of detail for a 224x224 ViT input.
- */
 async function fileToDownscaledDataUrl(file: File, maxEdge = 1024, quality = 0.85): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
@@ -34,12 +27,9 @@ async function fileToDownscaledDataUrl(file: File, maxEdge = 1024, quality = 0.8
 }
 
 export default function AssessmentPage() {
-  // Scroll the CONTAINER directly — more reliable during streaming than calling
-  // scrollIntoView() on a sentinel child.
   const mainRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-follow is on until the user scrolls away, then re-arms near the bottom.
   const [autoScroll, setAutoScroll] = useState(true);
   const prevCountRef = useRef(0);
 
@@ -53,9 +43,6 @@ export default function AssessmentPage() {
   const { messages, status, stop, ...rest } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
-      // Only STABLE values belong here — this object is captured when the transport is
-      // constructed. xrayImageUrl was previously here and would always arrive as
-      // undefined on the server; it is now passed per-request in handleSubmit instead.
       body: { consultId: assessmentId },
     }),
   }) as any;
@@ -64,11 +51,6 @@ export default function AssessmentPage() {
     rest.sendMessage || ((msg: any, opts?: any) => rest.append({ role: "user", content: msg.text }, opts));
   const isLoading = status === "submitted" || status === "streaming";
 
-  /**
-   * The last message's text. This string GROWS with every token, which makes it a
-   * reliable effect dependency — unlike `messages`, whose array identity may not change
-   * on each delta, so an effect keyed on it alone can miss updates mid-stream.
-   */
   const lastMessageText = useMemo(() => {
     const last = messages.at(-1);
     if (!last) return "";
@@ -77,13 +59,26 @@ export default function AssessmentPage() {
       : last.content ?? "";
   }, [messages]);
 
-  /**
-   * Follow the stream.
-   *
-   * Smooth for a brand-new message (nice transition), INSTANT for token deltas —
-   * "smooth" fired dozens of times a second fights itself, stutters, and can stall
-   * mid-animation.
-   */
+  // --- THE FIX: Smarter Loading State ---
+  // Keeps the loading animation visible if the SDK has created the assistant message 
+  // but hasn't received the first text token yet.
+  const showLoading = useMemo(() => {
+    if (!isLoading) return false;
+    const last = messages.at(-1);
+    if (!last) return false;
+    
+    if (last.role === "user") return true;
+    
+    if (last.role === "assistant") {
+      const text = last.parts
+        ? last.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
+        : last.content;
+      return !text?.trim(); // Show loading if the assistant message is still empty
+    }
+    return false;
+  }, [isLoading, messages]);
+  // --------------------------------------
+
   useEffect(() => {
     if (!autoScroll) return;
     const el = mainRef.current;
@@ -95,19 +90,11 @@ export default function AssessmentPage() {
     el.scrollTo({ top: el.scrollHeight, behavior: isNewMessage ? "smooth" : "auto" });
   }, [lastMessageText, messages.length, autoScroll, status]);
 
-  /**
-   * Detect that the USER took over.
-   *
-   * Deliberately wheel/touch rather than onScroll: an onScroll handler also fires during
-   * our own programmatic smooth scrolling, sees an intermediate position far from the
-   * bottom, and switches auto-follow off mid-animation. Listening to real input avoids
-   * that feedback loop.
-   */
   const handleUserScroll = () => {
     const el = mainRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setAutoScroll(distanceFromBottom < 120); // re-arm once they come back near the bottom
+    setAutoScroll(distanceFromBottom < 120);
   };
 
   const jumpToLatest = () => {
@@ -115,16 +102,6 @@ export default function AssessmentPage() {
     mainRef.current?.scrollTo({ top: mainRef.current.scrollHeight, behavior: "smooth" });
   };
 
-  /**
-   * THE GATE — the agent decides when the attach button exists, not the UI.
-   *
-   * The route emits `data-artefact-request` on every inquirer turn with the CURRENT
-   * request list, under a stable id, so the SDK reconciles it to one latest value:
-   *
-   *   cardiorespiratory picture  -> agent asks "have you had a chest X-ray?"  requests: []
-   *   patient confirms yes       -> "Kindly click the attach button below..."  requests: ["CHEST_XRAY"]
-   *   patient says no / uploaded -> requests: []   (button disappears)
-   */
   const awaitingXray = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const part = messages[i].parts?.find((p: any) => p.type === "data-artefact-request");
@@ -133,14 +110,13 @@ export default function AssessmentPage() {
     return false;
   }, [messages]);
 
-  // Only render the paperclip when the agent asked AND nothing is attached yet.
   const showAttachButton = awaitingXray && !xrayImageUrl;
 
   const handlePaperclipClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
+    e.target.value = ""; 
     if (!file) return;
 
     setUploadError(null);
@@ -156,25 +132,19 @@ export default function AssessmentPage() {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    // Per-request body — this is what actually gets the image to the server.
     sendMessage({ text: input }, { body: { consultId: assessmentId, xrayImageUrl } });
 
     setInput("");
-    // Clear after sending: the graph holds it in state now, and the inquirer won't ask
-    // again, so keeping it would just re-send the same bytes every turn.
     setXrayImageUrl(undefined);
-    // Sending is an explicit signal that they want to watch the reply.
     setAutoScroll(true);
   };
 
   return (
     <div className="fixed inset-0 bg-[#020617] text-slate-200 overflow-hidden selection:bg-blue-500/30">
-      {/* Backgrounds */}
       <HeartbeatCanvas />
       <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-blue-600/20 blur-[120px] pointer-events-none z-0" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-teal-500/10 blur-[120px] pointer-events-none z-0" />
 
-      {/* HEADER */}
       <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 border-b border-white/10 backdrop-blur-sm shadow-[0_0_15px_rgba(37,99,235,0.6)] bg-slate-950/60">
         <div className="flex items-center gap-4">
           <Link href="/" className="p-2 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
@@ -192,9 +162,6 @@ export default function AssessmentPage() {
         </div>
       </header>
 
-      {/* CHAT AREA
-          NOTE: `scroll-smooth` was removed from className — that CSS property overrides
-          the behavior: "auto" we need during token streaming. */}
       <main
         ref={mainRef}
         onWheel={handleUserScroll}
@@ -202,7 +169,6 @@ export default function AssessmentPage() {
         className="absolute inset-0 overflow-y-auto px-6 pt-24 pb-48 z-10"
       >
         <div className="max-w-3xl mx-auto space-y-8">
-          {/* Welcome */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="flex gap-4 justify-start">
             <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-900/40 border border-blue-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(56,189,248,0.4)] mt-1">
               <Activity className="w-4 h-4 text-[#38bdf8]" />
@@ -215,13 +181,11 @@ export default function AssessmentPage() {
             </div>
           </motion.div>
 
-          {/* History */}
           {messages.map((m: any) => {
             const text = m.parts
               ? m.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
               : m.content;
 
-            // Skip empty shells (a turn that produced only data parts).
             if (!text?.trim()) return null;
 
             return (
@@ -246,8 +210,8 @@ export default function AssessmentPage() {
             );
           })}
 
-          {/* Loading */}
-          {isLoading && messages.at(-1)?.role === "user" && (
+          {/* THE FIX: Replaced the old condition with `showLoading` */}
+          {showLoading && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4 justify-start">
               <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-900/40 border border-blue-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(56,189,248,0.4)] mt-1">
                 <Activity className="w-4 h-4 text-[#38bdf8] animate-pulse" />
@@ -263,15 +227,12 @@ export default function AssessmentPage() {
             </motion.div>
           )}
 
-          {/* Bottom spacer so the last bubble clears the input area. */}
           <div className="h-4" />
         </div>
       </main>
 
-      {/* INPUT AREA */}
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#020617] via-[#020617]/90 to-transparent z-50">
         <div className="max-w-3xl mx-auto">
-          {/* Jump to latest — only while streaming AND the user has scrolled away. */}
           {!autoScroll && isLoading && (
             <motion.button
               type="button"
@@ -285,7 +246,6 @@ export default function AssessmentPage() {
             </motion.button>
           )}
 
-          {/* Attached preview */}
           {xrayImageUrl && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-3 flex items-center gap-3 bg-slate-900/80 border border-blue-500/30 w-fit p-1.5 pr-3 rounded-lg backdrop-blur-md shadow-lg">
               <div className="relative w-10 h-10 rounded-md overflow-hidden border border-slate-700">
@@ -311,14 +271,13 @@ export default function AssessmentPage() {
           <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
             <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
 
-            {/* GATED: only exists once the agent has requested the upload. */}
             {showAttachButton && (
               <motion.button
                 type="button"
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={handlePaperclipClick}
-                className="absolute left-2 z-10 h-10 w-10 flex items-center justify-center rounded-full text-blue-400 ring-2 ring-blue-500/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                className="absolute left-2 z-10 h-10 w-10 flex items-center justify-center rounded-full text-blue-400 ring-2 ring-blue-500/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors mr-4"
                 title="Attach your chest X-ray"
               >
                 <Paperclip size={20} />
@@ -330,8 +289,7 @@ export default function AssessmentPage() {
               onChange={(e) => setInput(e.target.value)}
               disabled={isLoading && status !== "streaming"}
               placeholder="Describe your symptoms..."
-              // Left padding follows the button so text never sits under empty space.
-              className={`w-full bg-black/40 border border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 h-14 pr-14 rounded-full backdrop-blur-xl shadow-2xl text-white placeholder:text-slate-500 transition-all outline-none ${showAttachButton ? "pl-12" : "pl-6"}`}
+              className={`w-full bg-black/40 border border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 h-14 pr-14 rounded-full backdrop-blur-xl shadow-2xl text-white placeholder:text-slate-500 transition-all outline-none ${showAttachButton ? "pl-14" : "pl-6"}`}
               autoComplete="off"
             />
 

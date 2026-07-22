@@ -1,7 +1,7 @@
 import { MemorySaver, StateGraph, START, END, Annotation, messagesStateReducer } from "@langchain/langgraph";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 
-import { conversationalLLM, patientVoiceLLM } from "./llm";
+import { recipientLLM, inquirerLLM, triageLLM } from "./llm";
 import { recipientPrompt, inquirerPrompt, triagePrompt } from "./prompts";
 import {
   HPISchema,
@@ -91,7 +91,14 @@ const recipientNode = async (state: HealthPilotState): Promise<Partial<HealthPil
   // q_{t-1}: the question we asked last turn is simply the previous AIMessage.
   const previousQuestion = state.askedQuestions.at(-1) ?? "(none — patient opened the conversation)";
 
-  const structured = conversationalLLM.withStructuredOutput(HPISchema, { name: "build_hpi" });
+  // method: "jsonSchema" uses Groq's response_format json_schema instead of tool-calling.
+  // Reasoning/preview models (e.g. qwen3.6-27b) frequently fail tool-call generation
+  // ("Failed to call a function") but emit schema-conforming JSON reliably. gpt-oss-120b
+  // works either way, so this is safe to leave on permanently.
+  const structured = recipientLLM.withStructuredOutput(HPISchema, {
+    name: "build_hpi",
+    method: "jsonSchema",
+  });
 
   const hpi = await recipientPrompt.pipe(structured).invoke({
     previousHpi: state.hpi ? JSON.stringify(state.hpi, null, 2) : "(none — round 1)",
@@ -121,7 +128,10 @@ const recipientNode = async (state: HealthPilotState): Promise<Partial<HealthPil
  * way your mcqNode's structured output is lifted out.
  */
 const inquirerNode = async (state: HealthPilotState): Promise<Partial<HealthPilotState>> => {
-  const structured = conversationalLLM.withStructuredOutput(InquirySchema, { name: "next_question" });
+  const structured = inquirerLLM.withStructuredOutput(InquirySchema, {
+    name: "next_question",
+    method: "jsonMode",
+  });
 
   const inquiry = await inquirerPrompt.pipe(structured).invoke({
     round: String(state.round),
@@ -141,7 +151,7 @@ const inquirerNode = async (state: HealthPilotState): Promise<Partial<HealthPilo
   // If the patient already uploaded an X-ray, never ask again.
   const requests = state.xrayImageUrl
     ? []
-    : inquiry.requestedArtifacts.filter((a) => a !== "NONE");
+    : (inquiry.requestedArtifacts ?? []).filter((a) => a !== "NONE");
 
   // The LLM writes the full question text itself (including the "click the attach button"
   // instruction on the upload turn), so we do NOT append boilerplate here.
@@ -150,7 +160,10 @@ const inquirerNode = async (state: HealthPilotState): Promise<Partial<HealthPilo
   return {
     // additional_kwargs.requests is what the route turns into the UI gate.
     messages: [new AIMessage({ content: questionText, additional_kwargs: { requests, phase: "intake" } })],
-    askedQuestions: [...state.askedQuestions, inquiry.question ?? ""],
+    // Return ONLY the new question. The askedQuestions reducer appends it. Returning the
+    // whole accumulated list here would make the reducer append the list to itself every
+    // turn — the list would double each round and the Inquirer's no-repeat check breaks.
+    askedQuestions: inquiry.question ? [inquiry.question] : [],
   };
 };
 
@@ -180,7 +193,7 @@ const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotS
   // the route matches on `tags`. Actions and safety-netting are NOT generated; they come
   // from the static PATHWAYS map and are rendered from the data part.
   const aiMsg = await triagePrompt
-    .pipe(patientVoiceLLM)
+    .pipe(triageLLM)
     .withConfig({ tags: ["patient_facing"] })
     .invoke({
       urgency,
@@ -251,17 +264,29 @@ function isReadyForDiagnosis(state: HealthPilotState): boolean {
 
   const p = hpi.patientProfile;
 
-  // Hard minimum for a meaningful EHR inference: who the patient is, plus a described
-  // complaint with at least basic characterisation, plus the PMH/meds/allergy sweep
-  // (these drive the tabular history + medication-class features).
+  // Check what has ACTUALLY been collected, not what the LLM claims is still needed.
+  // informationStillNeeded proved unreliable — the model kept repopulating it with items
+  // the patient had already answered, so the gate never opened and intake ran to the cap.
   const hasIdentity = p.ageYears !== null && p.sex !== null;
-  const hasComplaint = hpi.symptoms.length > 0 && hpi.symptoms.some((s) => s.onset || s.duration);
-  const hasHistorySweep =
-    // "asked and empty" is valid — an explicit [] after asking means we screened.
-    // We treat informationStillNeeded as the source of truth for what's outstanding.
-    !hpi.informationStillNeeded.some((n) =>
-      /medication|allerg|past medical|pmh|history|onset|duration|age|sex/i.test(n),
-    );
+
+  const hasComplaint =
+    hpi.symptoms.length > 0 && hpi.symptoms.some((s) => s.onset || s.duration);
+
+  // For PMH / meds / allergies, a non-empty array means answered. An explicit "no" is
+  // captured as a relevant negative, so treat relevantNegatives as evidence of screening
+  // too. We require that each of the three has been ASKED — approximated by whether the
+  // corresponding question appears in askedQuestions (deduped).
+  const asked = new Set(state.askedQuestions.map((q) => q.toLowerCase()));
+  const askedAbout = (re: RegExp) => [...asked].some((q) => re.test(q));
+
+  const pmhCovered = hpi.pastMedicalHistory.length > 0 || askedAbout(/medical condition|diagnos|past medical|pmh|history/);
+  const medsCovered = hpi.medications.length > 0 || askedAbout(/medication|medicine|taking|drug/);
+  const allergyCovered =
+    hpi.allergies.length > 0 ||
+    hpi.relevantNegatives.some((n) => /allerg/i.test(n)) ||
+    askedAbout(/allerg/);
+
+  const hasHistorySweep = pmhCovered && medsCovered && allergyCovered;
 
   // For cardio-resp presentations, an X-ray is informative — but it's OPTIONAL, not
   // blocking. If the patient has one we use it; if not, we proceed without it. We never

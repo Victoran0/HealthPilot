@@ -1,4 +1,4 @@
-import { ChatGroq } from "@langchain/groq";
+import { noteLLM } from "./llm";
 import type { HPI } from "./validator";
 
 /**
@@ -29,13 +29,10 @@ const SYSTEM_PROMPT =
   "5. FORMAT: Output plain text only. No markdown, no bolding, no headers like '###'. " +
   "Use a single line break between SOAP sections.";
 
-// Low temperature to match training (cell 39 used temperature=0.2).
-const noteLLM = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY,
-  model: "llama-3.1-8b-instant", // same family/size the notes were generated with
-  temperature: 0.2,
-  maxTokens: 512,
-});
+// NOTE: training notes were generated with llama-3.1-8b, but Groq deprecated that model
+// (June 2026). noteLLM (gpt-oss-20b in the registry) is the closest available substitute.
+// This is a real train/inference distribution gap — if EHR text-branch quality drops,
+// that mismatch is the first suspect. See llm.ts to retune the note model.
 
 /**
  * Build the user prompt in the SAME shape as the notebook's build_patient_prompt().
@@ -109,13 +106,31 @@ export async function generateSoapNote(hpi: HPI): Promise<string> {
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildPatientPrompt(hpi) },
     ]);
-    const note = typeof res.content === "string" ? res.content.trim() : "";
+    const raw = typeof res.content === "string" ? res.content : "";
+    const note = stripReasoning(raw).trim();
     if (note.length > 20) return note;
     throw new Error("Empty note from LLM");
   } catch (err) {
     console.error("[HealthPilot] SOAP note generation failed, using template fallback:", err);
     return templateFallback(hpi);
   }
+}
+
+/**
+ * Safety net for reasoning models. reasoning_effort:"none" should prevent this, but if a
+ * Qwen preview build leaks a <think>...</think> block anyway, it must not end up in the
+ * note the BioClinical encoder reads. Strip the wrapper and keep the answer after it.
+ */
+function stripReasoning(text: string): string {
+  // Remove a <think>...</think> block if present.
+  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  // If an opening tag was emitted without a close (truncation), drop everything up to the
+  // last recognisable SOAP start.
+  if (/<think>/i.test(out)) {
+    const soapStart = out.search(/S:\s/);
+    if (soapStart !== -1) out = out.slice(soapStart);
+  }
+  return out;
 }
 
 /** Deterministic fallback. Structurally similar, but not the trained distribution. */
