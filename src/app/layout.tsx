@@ -17,6 +17,7 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
+// wake the huggingface spaces for diagnostic models on app load, so that the first user doesn't have to wait for them to wake up
 await wakeSpaces().then((results) => {console.log("[wake] All Spaces woken:", results);}).catch((err) => {console.error("[wake] wakeSpaces failed:", err);});
 
 // const geist = Geist({

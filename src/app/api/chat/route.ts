@@ -33,11 +33,12 @@ export async function POST(req: Request) {
       .map((p) => p.text)
       .join("") ?? "";
 
-  const additional_kwargs: Record<string, unknown> = {};
-  if (xrayImageUrl) additional_kwargs.xrayImageUrl = xrayImageUrl;
-  if (ehrRecord) additional_kwargs.ehrRecord = ehrRecord;
-
-  const inputMessage = new HumanMessage({ content: text, additional_kwargs });
+  const inputMessage = new HumanMessage({
+    content: text,
+    // Artefacts ride on additional_kwargs, exactly where your study project puts
+    // `persona` and `document`. The recipient node reads them off here.
+    additional_kwargs: { xrayImageUrl, ehrRecord },
+  });
 
   const config = { version: "v2" as const, configurable: { thread_id: consultId } };
 
@@ -85,11 +86,15 @@ export async function POST(req: Request) {
               if (typeof question === "string" && question) {
                 writer.write({ type: "text-delta", id: textStreamId, delta: question });
               }
-              // Separate data part so the client can render an X-ray upload widget
-              // rather than hoping the patient parses "please upload your X-ray".
-              if (requests?.length) {
-                writer.write({ type: "data-artefact-request", id: "artefacts", data: { requests } });
-              }
+              // ALWAYS emit, even when empty. The id is stable, so the AI SDK reconciles
+              // this into a single "current artefact request" part — writing an empty
+              // array is what CLEARS the attach button once the upload turn has passed.
+              // Emitting only when non-empty would leave the button stuck on screen.
+              writer.write({
+                type: "data-artefact-request",
+                id: "artefacts",
+                data: { requests: requests ?? [] },
+              });
             }
 
             // HPI: powers the "what I've understood so far" sidebar.
@@ -167,7 +172,7 @@ export async function POST(req: Request) {
           }
 
           try {
-            const graphState = await graph.getState({configurable: {thread_id: consultId }});
+            const graphState = await graph.getState(config);
             console.log(
               "[HealthPilot] round:",
               graphState.values.round,
@@ -177,8 +182,7 @@ export async function POST(req: Request) {
           } catch (stateErr) {
             console.error("[HealthPilot] could not read final graph state:", stateErr);
           } finally {
-            const graphState = await graph.getState({configurable: {thread_id: consultId }} )
-            console.log('The current state of the graph:\n', graphState);
+            console.log("The graph's state: ", await graph.getState({configurable: { thread_id: consultId }}));
           }
         }
       },

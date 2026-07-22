@@ -1,18 +1,22 @@
 import { ChatGroq } from "@langchain/groq";
 import { HfInference } from "@huggingface/inference";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 /** Structuring models (Recipient, Inquirer). These stream JSON — never surface their tokens. */
-export const conversationalLLM = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY,
-  model: "openai/gpt-oss-120b",
-  temperature: 0.1,
-  maxTokens: 2048,
-});
+export const conversationalLLM = new ChatGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+    model: "gemini-3.5-Flash",
+    temperature: 0.1,
+    maxRetries: 2,
+    // other params...
+})
+
+
 
 /** The ONLY model whose tokens are allowed to reach the patient. Tagged in triage.ts. */
 export const patientVoiceLLM = new ChatGroq({
   apiKey: process.env.GROQ_API_KEY,
-  model: "openai/gpt-oss-120b",
+  model: "llama-3.1-8b-instant",
   temperature: 0.3,
   maxTokens: 1024,
 });
@@ -38,6 +42,10 @@ export async function medgemmaStream(opts: {
 
   const stream = hf.chatCompletionStream({
     model: MEDGEMMA_MODEL,
+    // Valid providers include: hf-inference, groq, together, fireworks-ai, nscale,
+    // novita, replicate, cerebras, deepinfra, ... "nebius" is NOT valid (that error you
+    // saw). "auto" lets HF pick a provider that actually serves this model — safest
+    // default. Pin a specific one only if you know it serves google/medgemma-27b-text-it.
     provider: (process.env.HF_PROVIDER as never) ?? "auto",
     messages: [
       { role: "system", content: opts.system },

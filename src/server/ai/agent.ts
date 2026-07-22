@@ -18,7 +18,11 @@ import { PATHWAYS } from "./pathways";
 import { chestVisionNode, ehrNode, ragNode } from "./nodes/evidence";
 import { analyserNode } from "./nodes/analyser";
 
-export const MAX_ROUNDS = 4;
+// Backstop only: if intake hasn't gathered enough by this many rounds, diagnose anyway
+// with what we have. A full sweep (identity, complaint characterisation, PMH, meds,
+// allergies, sometimes vitals) legitimately needs several turns, so this is higher than
+// the paper's 4 — it's a safety ceiling, not the normal exit (that's isReadyForDiagnosis).
+export const MAX_ROUNDS = 8;
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -130,27 +134,26 @@ const inquirerNode = async (state: HealthPilotState): Promise<Partial<HealthPilo
     providedArtifacts: state.xrayImageUrl ? "CHEST_XRAY" : "none",
   });
 
-  const requests = inquiry.requestedArtifacts.filter((a) => a !== "NONE");
-  const artefactAsk = requests.map(artefactPrompt).join(" ");
-  const questionText = [inquiry.question, artefactAsk].filter(Boolean).join("\n\n");
+  // Two-step protocol (see inquirerPrompt): requestedArtifacts is populated ONLY on the
+  // upload turn, after the patient has confirmed they have the image. On the availability
+  // turn it is empty, so the UI keeps the attach button hidden.
+  //
+  // If the patient already uploaded an X-ray, never ask again.
+  const requests = state.xrayImageUrl
+    ? []
+    : inquiry.requestedArtifacts.filter((a) => a !== "NONE");
+
+  // The LLM writes the full question text itself (including the "click the attach button"
+  // instruction on the upload turn), so we do NOT append boilerplate here.
+  const questionText = inquiry.question ?? "";
 
   return {
-    // additional_kwargs is how the route knows to render an upload widget rather than
-    // a plain text bubble.
+    // additional_kwargs.requests is what the route turns into the UI gate.
     messages: [new AIMessage({ content: questionText, additional_kwargs: { requests, phase: "intake" } })],
     askedQuestions: [...state.askedQuestions, inquiry.question ?? ""],
   };
 };
 
-function artefactPrompt(a: string): string {
-  switch (a) {
-    case "CHEST_XRAY": return "If you've had a chest X-ray recently and can upload it, I can take a look.";
-    case "ECG": return "If you have an ECG report, sharing it would help.";
-    case "BLOODS": return "If you have recent blood test results, please share them.";
-    case "ECHO": return "If you have an echocardiogram report, please share it.";
-    default: return "";
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* 3. TriageAgent — the only node that streams prose                   */
@@ -181,6 +184,13 @@ const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotS
     .withConfig({ tags: ["patient_facing"] })
     .invoke({
       urgency,
+      primaryAssessment: state.analysis?.primaryAssessment
+        ? `${state.analysis.primaryAssessment.condition} ` +
+          `(estimated probability ${(state.analysis.primaryAssessment.probability * 100).toFixed(0)}%, ` +
+          `overall confidence ${state.analysis.confidence}). ` +
+          `Reasoning: ${state.analysis.primaryAssessment.reasoning} ` +
+          `Ranked below it: ${state.analysis.primaryAssessment.differentiatedFrom.join(", ") || "none"}.`
+        : "No diagnostic assessment available (the analyser did not complete).",
       headline: pathway.headline,
       actions: pathway.actions.join("\n- "),
       safetyNetting: pathway.safetyNetting.join("\n- "),
@@ -198,6 +208,16 @@ const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotS
     overriddenByRules: overridden,
     overrideReason,
     patientMessage: String(aiMsg.content),
+    // The diagnostic result travels with the triage decision so the UI renders it as its
+    // own card. The triage LLM phrases it; it cannot alter it.
+    diagnosis: state.analysis?.primaryAssessment
+      ? {
+          condition: state.analysis.primaryAssessment.condition,
+          probability: state.analysis.primaryAssessment.probability,
+          confidence: state.analysis.confidence,
+          differentials: state.analysis.primaryAssessment.differentiatedFrom,
+        }
+      : null,
   };
 
   // The route reads `triage` off this node's on_chain_end output and writes it as a
@@ -212,7 +232,47 @@ const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotS
 /* Routing                                                             */
 /* ------------------------------------------------------------------ */
 /**
- * Runs after the recipient, once H_t is fresh. Decides: another question, or diagnose?
+ * INTAKE COMPLETENESS GATE
+ *
+ * The old rule ("any red flag -> diagnose immediately") was wrong: it skipped data
+ * collection the moment a scary word appeared, so "my stomach hurts badly" jumped
+ * straight to triage on round 1 with an empty profile. A red flag should raise URGENCY
+ * (handled by the safety layer at the end), not SKIP the interview.
+ *
+ * The real question the gate must answer is: do we have enough to run the EHR model?
+ * The hybrid model's tabular branch is trained to tolerate missing values, but a
+ * prediction from age+sex alone is close to worthless. So we require the minimum set
+ * that makes the model meaningful, and we let the inquirer keep asking until we have it
+ * (or we hit the round cap, which is a safety backstop, not a target).
+ */
+function isReadyForDiagnosis(state: HealthPilotState): boolean {
+  const hpi = state.hpi;
+  if (!hpi) return false;
+
+  const p = hpi.patientProfile;
+
+  // Hard minimum for a meaningful EHR inference: who the patient is, plus a described
+  // complaint with at least basic characterisation, plus the PMH/meds/allergy sweep
+  // (these drive the tabular history + medication-class features).
+  const hasIdentity = p.ageYears !== null && p.sex !== null;
+  const hasComplaint = hpi.symptoms.length > 0 && hpi.symptoms.some((s) => s.onset || s.duration);
+  const hasHistorySweep =
+    // "asked and empty" is valid — an explicit [] after asking means we screened.
+    // We treat informationStillNeeded as the source of truth for what's outstanding.
+    !hpi.informationStillNeeded.some((n) =>
+      /medication|allerg|past medical|pmh|history|onset|duration|age|sex/i.test(n),
+    );
+
+  // For cardio-resp presentations, an X-ray is informative — but it's OPTIONAL, not
+  // blocking. If the patient has one we use it; if not, we proceed without it. We never
+  // hold the whole pipeline waiting on an image the patient may not have.
+  const identityAndComplaint = hasIdentity && hasComplaint;
+
+  return identityAndComplaint && hasHistorySweep;
+}
+
+/**
+ * Runs after the recipient, once H_t is fresh. Decides: keep interviewing, or diagnose?
  *
  * Returns a SINGLE node name — never an array. Array-returning conditional edges are
  * matched by-value against the path map and fail ("unknown or null destination") when
@@ -220,9 +280,15 @@ const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotS
  * node and fan out from there with static edges, which is version-robust.
  */
 const routePhase = (state: HealthPilotState): "inquirerNode" | "diagnose" => {
+  // Round cap is a hard backstop only — reaching it means "stop asking and do your best
+  // with what you have", NOT the normal exit. Normal exit is the readiness gate below.
   if (state.round >= MAX_ROUNDS) return "diagnose";
-  if ((state.hpi?.redFlagsIdentified?.length ?? 0) > 0) return "diagnose"; // stop asking, escalate
-  if (state.hpi?.intakeConfidence === "HIGH") return "diagnose";
+
+  // The gate: only diagnose once we've collected what the EHR model actually needs.
+  // Red flags do NOT short-circuit this — they're carried in hpi.redFlagsIdentified and
+  // acted on by the deterministic safety layer in triageNode regardless of path.
+  if (isReadyForDiagnosis(state)) return "diagnose";
+
   return "inquirerNode";
 };
 

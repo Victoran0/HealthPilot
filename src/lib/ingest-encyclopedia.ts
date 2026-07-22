@@ -20,17 +20,6 @@ import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import {PDFParse} from "pdf-parse";
 
-const PDF_PATH = resolve(process.cwd(), "\\Users\\User\\Data Science\\Deep Agents\\HealthPilot\\Front End\\health_pilot\\src\\lib\\A-Z Family Medical Encyclopedia.pdf");
-
-const embeddings = new GoogleGenerativeAIEmbeddings({
-  apiKey: process.env.GOOGLE_API_KEY,
-  model: "text-embedding-004",
-});
-
-const index = new Index({
-  url: process.env.UPSTASH_VECTOR_REST_URL,
-  token: process.env.UPSTASH_VECTOR_REST_TOKEN,
-});
 
 /**
  * scripts/ingest-encyclopaedia.ts
@@ -55,6 +44,20 @@ const index = new Index({
  *   UPSTASH_VECTOR_REST_URL
  *   UPSTASH_VECTOR_REST_TOKEN
  */
+const PDF_PATH = resolve(process.cwd(), "\\Users\\User\\Data Science\\Deep Agents\\HealthPilot\\Front End\\health_pilot\\src\\lib\\A-Z Family Medical Encyclopedia.pdf");
+
+// ---- RESUME CONTROL ------------------------------------------------
+// Set to the last "Uploaded N / total" number printed before the limit hit.
+// 0 = start fresh. Chunks are deterministic (same PDF + same splitter settings
+// = same order every run), so ids enc-0..enc-4999 are already in Upstash and
+// upsert is idempotent — but skipping them saves your daily write quota.
+const START_FROM = 5000;
+
+// No embedding client needed — Upstash embeds the `data` field server-side.
+const index = new Index({
+  url: process.env.UPSTASH_VECTOR_REST_URL!,
+  token: process.env.UPSTASH_VECTOR_REST_TOKEN!,
+});
 
 async function main() {
   console.log("Reading PDF:", PDF_PATH);
@@ -79,7 +82,7 @@ async function main() {
   // Smaller batch than before — Upstash is doing the embedding server-side now,
   // so the per-batch time is slightly longer. 25 is a safe default.
   const BATCH = 25;
-  for (let i = 0; i < chunks.length; i += BATCH) {
+  for (let i = START_FROM; i < chunks.length; i += BATCH) {
     const slice = chunks.slice(i, i + BATCH);
 
     await index.upsert(
@@ -96,7 +99,7 @@ async function main() {
       })),
     );
 
-    console.log(`Uploaded ${Math.min(i + BATCH, chunks.length)} / ${chunks.length}`);
+    console.log(`Uploaded ${Math.min(i + BATCH, chunks.length)} / ${chunks.length} (resumed from ${START_FROM})`);
   }
 
   console.log("Done — index is live.");

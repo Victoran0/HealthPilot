@@ -42,6 +42,36 @@ export const HPISchema = z.object({
   intakeConfidence: z.enum(["HIGH", "MODERATE", "LOW"]),
   /** Candidate condition families the InquirerAgent should try to separate (≈ d̂_t). */
   candidateConditions: z.array(z.string()),
+
+  /**
+   * Structured fields the hybrid EHR model's TABULAR branch needs. The recipient fills
+   * these as the patient reveals them; `null` means "not yet asked / not provided".
+   * The intake gate (isReadyForDiagnosis) checks these directly — this is what tells
+   * the graph whether it has enough to actually run the model, vs. needing another
+   * inquirer round.
+   */
+  patientProfile: z.object({
+    ageYears: z.number().nullable(),
+    sex: z.enum(["male", "female"]).nullable(),
+    // Vitals/labs the patient may know. All optional — the model tolerates missing
+    // values (trained with 0-fill), but we want to ASK for the common, high-signal ones.
+    bmi: z.number().nullable(),
+    systolicBP: z.number().nullable(),
+    hba1c: z.number().nullable(),
+    totalCholesterol: z.number().nullable(),
+    smoker: z.boolean().nullable(),
+    // Real one-hot features in the model (RACE_white/black, ETHNICITY_*). Only collect if
+    // the patient volunteers — never infer. null when unstated.
+    race: z.enum(["white", "black"]).nullable(),
+    ethnicity: z.enum(["french", "italian", "chinese", "african", "german"]).nullable(),
+  }),
+
+  /**
+   * Does the presentation involve cardiovascular / respiratory features that would make
+   * a chest X-ray informative? Only then does the inquirer request one and only then
+   * does chestVision run. Set by the recipient from the symptom picture.
+   */
+  cardioRespRelevant: z.boolean(),
 });
 export type HPI = z.infer<typeof HPISchema>;
 
@@ -83,9 +113,22 @@ export const RagResultSchema = z.object({
 });
 export type RagResult = z.infer<typeof RagResultSchema>;
 
-/** MedGemma analyser node — the diagnostic verdict. */
+/** MedGemma analyser node — the diagnostic assessment. */
 export const AnalysisSchema = z.object({
   understanding: z.string(),
+  /**
+   * The leading diagnosis. This is the system's primary research output — Phase 7 scores
+   * diagnostic accuracy against this field, so it must always be populated. When the
+   * evidence genuinely cannot separate candidates, the analyser says so in `reasoning`
+   * and lists them in `differentiatedFrom` rather than leaving this blank.
+   */
+  primaryAssessment: z.object({
+    condition: z.string(),
+    probability: z.number().min(0).max(1),
+    reasoning: z.string(),
+    /** Conditions actively considered and ranked below the primary. */
+    differentiatedFrom: z.array(z.string()),
+  }),
   considerations: z.array(
     z.object({
       condition: z.string(),
@@ -111,5 +154,18 @@ export const TriageDecisionSchema = z.object({
   overriddenByRules: z.boolean(),
   overrideReason: z.string().nullable(),
   patientMessage: z.string(),
+  /**
+   * The diagnostic result, carried through to the UI so it can be rendered as a distinct
+   * card alongside the urgency banner. Copied from Analysis.primaryAssessment — the
+   * triage LLM phrases it but cannot change it.
+   */
+  diagnosis: z
+    .object({
+      condition: z.string(),
+      probability: z.number().min(0).max(1),
+      confidence: z.enum(["HIGH", "MODERATE", "LOW"]),
+      differentials: z.array(z.string()),
+    })
+    .nullable(),
 });
 export type TriageDecision = z.infer<typeof TriageDecisionSchema>;

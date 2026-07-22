@@ -21,8 +21,18 @@ export async function analyserNode(state: HealthPilotState) {
     analysis = AnalysisSchema.parse(parseJsonBlock<unknown>(raw));
   } catch (err) {
     // Fail SAFE. A dead analyser routes to a human; it never falls back to reassurance.
+    // primaryAssessment is required by the schema, so it is populated explicitly as
+    // "no assessment" rather than fabricating a condition.
     analysis = {
       understanding: "The automated assessment could not be completed.",
+      primaryAssessment: {
+        condition: "No diagnostic assessment available",
+        probability: 0,
+        reasoning:
+          "The diagnostic model could not be reached, so no assessment was produced. " +
+          "This is a system failure, not a finding of low risk.",
+        differentiatedFrom: [],
+      },
       considerations: [],
       redFlags: state.hpi?.redFlagsIdentified ?? [],
       suggestedUrgency: (state.hpi?.redFlagsIdentified.length ?? 0) > 0 ? "A_AND_E" : "NHS_111",

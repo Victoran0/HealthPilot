@@ -18,14 +18,14 @@ export default function HealthPilotLanding() {
   const yText = useTransform(scrollYProgress, [0, 1], [0, 300]);
   const opacityText = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
 
-    // NEW: Features Section Parallax
+    // Features Section Parallax
   const featuresRef = useRef(null);
   const { scrollYProgress: featuresScroll } = useScroll({
     target: featuresRef,
     offset: ["start start", "end start"], // Tracks from when it hits the top, until it's covered
   });
   
-  // As the next section slides over, move the features down slower, fade out, and shrink slightly
+  // As the next section slides over, move the features down slower, fade out, and shrink slightly..
   const featuresY = useTransform(featuresScroll, [0, 1], [0, 250]); 
   const featuresOpacity = useTransform(featuresScroll, [0, 1], [1, 0.1]);
   const featuresScale = useTransform(featuresScroll, [0, 1], [1, 0.95]);
