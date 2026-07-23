@@ -7,6 +7,7 @@ import { Activity, Brain, Shield, Stethoscope, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import {generateId} from "@/lib/generate_id";
+import Footer from "@/components/Footer";
 
 export default function HealthPilotLanding() {
   const containerRef = useRef(null);
@@ -52,6 +53,7 @@ export default function HealthPilotLanding() {
 
   return (
     // Removed text-slate-900 from main wrapper so we can control dark/light sections
+    <div className="flex flex-col bg-[#020617]">
     <main ref={containerRef} className="relative min-h-screen overflow-hidden">
       
       <MedicalCanvas />
@@ -120,9 +122,9 @@ export default function HealthPilotLanding() {
             >
               Start Triage Assessment <ArrowRight className="w-4 h-4" />
             </Link>
-            <button className="w-full sm:w-auto px-8 py-3 rounded-md font-medium border border-slate-600 bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-md transition-colors shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-              View Clinical Documentation
-            </button>
+            <Link href={`/workflow`} className="w-full sm:w-auto px-8 py-3 rounded-md font-medium border border-slate-600 bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-md transition-colors shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+              View HealthPilot Workflow
+            </Link>
           </motion.div>
         </motion.div>
 
@@ -228,6 +230,8 @@ export default function HealthPilotLanding() {
         </div>
       </section>
     </main>
+    <Footer />
+    </div>
   );
 }
 

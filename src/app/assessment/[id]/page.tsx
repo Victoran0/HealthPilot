@@ -308,14 +308,14 @@ export default function AssessmentPage() {
                   <div className="text-xs text-slate-500 font-mono uppercase px-1">{m.role === "user" ? "You" : "HealthPilot"}</div>
                   
                   {/* Render the text bubble (and the image if it exists) */}
-                  {(text?.trim() || attachedImages[m.id]) && (
+                  {(text?.trim() || imageByMessageId[m.id]) && (
                     <div className={`rounded-2xl px-5 py-3.5 text-[15px] leading-relaxed shadow-lg whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white rounded-tr-sm shadow-[0_0_15px_rgba(37,99,235,0.3)]" : "bg-[#0f172a]/80 border border-white/10 text-slate-200 rounded-tl-sm backdrop-blur-md"}`}>
                       
                       {/* --- NEW: Render the attached image inside the chat bubble --- */}
-                      {attachedImages[m.id] && (
+                      {imageByMessageId[m.id] && (
                         <div className="mb-3 relative w-48 h-48 rounded-xl overflow-hidden border border-blue-400/30 shadow-inner bg-black/20">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={attachedImages[m.id]} alt="Attached X-Ray" className="object-cover w-full h-full" />
+                          <img src={imageByMessageId[m.id]} alt="Attached X-Ray" className="object-cover w-full h-full" />
                         </div>
                       )}
                       
