@@ -14,7 +14,11 @@ export const metadata: Metadata = {
     template: "%s | Health Pilot"
   }, 
   description: "A Multi Modal AI agent that diagnoses health conditions by sequentially analysing patient symptoms, chest X-ray images, and structured clinical records — then triages and books appropriate specialist appointments.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
+  icons: {
+    icon: "/images/logo.png",
+    shortcut: "/images/logo.png",
+    apple: "/images/logo.png",
+  },
 };
 
 // wake the huggingface spaces for diagnostic models on app load, so that the first user doesn't have to wait for them to wake up
