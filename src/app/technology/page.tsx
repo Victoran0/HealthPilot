@@ -60,6 +60,7 @@ function BrainCircuitIcon(props: any) {
 
 export default function TechnologyPage() {
   return (
+    <div className="flex flex-col bg-[#020617]">
     <div className="flex flex-col min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30 relative overflow-x-hidden">
       <Nav />
 
@@ -68,7 +69,7 @@ export default function TechnologyPage() {
       <div className="absolute top-[10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none z-0" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-purple-500/10 blur-[120px] pointer-events-none z-0" />
 
-      <main className="relative z-10 flex-1 max-w-7xl mx-auto px-6 pt-32 pb-24 w-full">
+      <main className="relative z-10 flex-1 max-w-7xl mx-auto px-6 pt-32 pb-8 w-full">
         <motion.div 
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
           className="text-center mb-20"
@@ -115,7 +116,8 @@ export default function TechnologyPage() {
         </div>
       </main>
 
-      <Footer />
+    </div>
+    <Footer />
     </div>
   );
 }

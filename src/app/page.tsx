@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import MedicalCanvas from "@/components/MedicalCanvas";
-import { Activity, Brain, Shield, Stethoscope, ArrowRight } from "lucide-react";
+import { Activity, Brain, Shield, Stethoscope, ArrowRight, AlertTriangle, ScanSearch } from "lucide-react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import {generateId} from "@/lib/generate_id";
 import Footer from "@/components/Footer";
+import Image from "next/image";
 
 export default function HealthPilotLanding() {
   const containerRef = useRef(null);
@@ -209,20 +210,112 @@ export default function HealthPilotLanding() {
             transition={{ duration: 0.8 }}
             className="lg:w-1/2 w-full"
           >
-            <div className="relative rounded-2xl bg-slate-950 border border-slate-700 p-4 shadow-2xl shadow-black/80">
-              <div className="flex gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              </div>
-              <div className="space-y-4">
-                <div className="h-8 bg-slate-800 rounded w-1/3"></div>
-                <div className="h-32 bg-slate-800 rounded w-full flex items-center justify-center text-slate-500 border border-slate-700/50">
-                  [ Multimodal Analysis Visualization ]
+            <div className="relative rounded-2xl bg-slate-950 border border-slate-700 p-4 shadow-2xl shadow-black/80 overflow-hidden">
+              
+              {/* Subtle background glow */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#38bdf8]/5 blur-[100px] pointer-events-none" />
+
+              {/* macOS style window header */}
+              <div className="flex items-center gap-2 mb-4 border-b border-slate-800/50 pb-3">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
                 </div>
+                <div className="mx-auto bg-slate-900 border border-slate-800 rounded-md px-3 py-1 text-[10px] text-slate-400 font-mono flex items-center gap-2 shadow-inner">
+                  <Shield className="w-3 h-3 text-emerald-500" /> secure-analysis-node
+                </div>
+                <div className="w-10" /> {/* Spacer to balance the flex layout */}
+              </div>
+
+              <div className="space-y-4 relative z-10">
+                
+                {/* Top Section: X-Ray & Notes */}
+                <div className="flex gap-4 h-48">
+                  
+                  {/* Left: X-Ray with Attention Map */}
+                  <div className="w-1/2 relative rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shadow-inner group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <Image
+                      src="/images/xray.png"
+                      alt="Chest X-Ray"
+                      fill
+                      className="object-cover opacity-50 mix-blend-luminosity"
+                    />
+                    
+                    {/* Animated Attention Heatmap */}
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.5, duration: 1, repeat: Infinity, repeatType: "reverse", repeatDelay: 0.5 }}
+                      className="absolute top-[30%] left-[20%] w-[40%] h-[30%] border border-red-500/80 rounded-[40%] bg-red-500/20 blur-[2px]"
+                    />
+                    
+                    {/* Scanner Line */}
+                    <motion.div 
+                      initial={{ top: 0 }}
+                      whileInView={{ top: "100%" }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                      className="absolute left-0 w-full h-0.5 bg-[#38bdf8] shadow-[0_0_10px_#38bdf8] opacity-50"
+                    />
+
+                    <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[8px] text-white font-mono border border-white/10 flex items-center gap-1">
+                      <ScanSearch className="w-3 h-3 text-[#38bdf8]" /> ChestVision v2.4
+                    </div>
+                  </div>
+
+                  {/* Right: Clinical Notes with Highlights */}
+                  <div className="w-1/2 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-[10px] text-slate-400 font-mono overflow-hidden relative shadow-inner">
+                    <div className="text-[#38bdf8] mb-2 flex items-center gap-1">
+                      <Activity className="w-3 h-3" /> EXTRACTING_FEATURES...
+                    </div>
+                    <p className="leading-relaxed">
+                      Patient presents with <span className="bg-amber-500/20 text-amber-300 px-1 rounded border border-amber-500/30">severe chest tightness</span> and <span className="bg-amber-500/20 text-amber-300 px-1 rounded border border-amber-500/30">productive cough</span>.
+                    </p>
+                    <p className="mt-2">
+                      PMH: <span className="text-slate-300">Asthma</span>
+                    </p>
+                    <p className="mt-2">
+                      Vitals: <span className="bg-red-500/20 text-red-300 px-1 rounded border border-red-500/30">HR 115 bpm</span>
+                    </p>
+                    
+                    {/* Fade out at bottom */}
+                    <div className="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-slate-900 to-transparent" />
+                  </div>
+                </div>
+
+                {/* Bottom Section: Metrics Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="h-20 bg-slate-800 rounded"></div>
-                  <div className="h-20 bg-slate-800 rounded"></div>
+                  
+                  {/* Primary Assessment */}
+                  <div className="bg-slate-900/80 border border-slate-700 rounded-xl p-3 shadow-inner">
+                    <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Primary Assessment</div>
+                    <div className="text-sm text-white font-bold">Acute Bronchitis</div>
+                    <div className="flex items-center justify-between mt-2 mb-1">
+                      <span className="text-[8px] text-slate-400">Probability</span>
+                      <span className="text-[9px] text-[#38bdf8] font-mono">82%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        whileInView={{ width: "82%" }}
+                        transition={{ delay: 0.8, duration: 1, ease: "easeOut" }}
+                        className="bg-gradient-to-r from-blue-600 to-[#38bdf8] h-full rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Triage Routing */}
+                  <div className="bg-slate-900/80 border border-slate-700 rounded-xl p-3 shadow-inner flex flex-col justify-center">
+                    <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Triage Routing</div>
+                    <div className="text-sm text-amber-400 font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" /> GP_URGENT
+                    </div>
+                    <div className="text-[9px] text-emerald-400 mt-1.5 flex items-center gap-1">
+                      <Shield className="w-2.5 h-2.5" /> Safety floor: Passed
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </div>
