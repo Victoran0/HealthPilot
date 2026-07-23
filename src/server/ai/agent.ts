@@ -13,7 +13,7 @@ import {
   type EhrResult,
   type RagResult,
 } from "./validator";
-import { evaluateSafetyFloor, applyFloor } from "./safety";
+import { evaluateSafetyFloor, applyFloor, insufficientDataFloor, rank } from "./safety";
 import { PATHWAYS } from "./pathways";
 import { chestVisionNode, ehrNode, ragNode } from "./nodes/evidence";
 import { analyserNode } from "./nodes/analyser";
@@ -77,6 +77,55 @@ const State = Annotation.Root({
 
 export type HealthPilotState = typeof State.State;
 
+/** Exact text used for the upload turn. Also how we detect it was already issued. */
+export const XRAY_UPLOAD_PROMPT =
+  "Kindly click the attach button below to upload a picture of your X-ray.";
+
+export const XRAY_AVAILABILITY_QUESTION =
+  "Have you had a chest X-ray, and can you access the image?";
+
+/**
+ * DETERMINISTIC CHEST X-RAY PROTOCOL
+ *
+ * The LLM proved unreliable here: it asked about availability, the patient said "yes",
+ * and it then moved on to allergies and never requested the upload — so ChestVision never
+ * ran on a cardiorespiratory patient who HAD an image. These two checks take that decision
+ * away from the model.
+ *
+ * Step A — cardioresp presentation, availability not yet asked.
+ * Step B — patient confirmed an image exists (recipient records it in availableImaging),
+ *          nothing uploaded yet, and we haven't already issued the upload request.
+ *
+ * Each fires at most once, so a patient who ignores the request can't deadlock intake.
+ */
+function askedAboutXray(state: HealthPilotState): boolean {
+  return state.askedQuestions.some((q) => /x-?ray/i.test(q));
+}
+
+function uploadAlreadyRequested(state: HealthPilotState): boolean {
+  return state.askedQuestions.some((q) => q.includes("attach button"));
+}
+
+function patientHasXray(state: HealthPilotState): boolean {
+  return (state.hpi?.availableImaging ?? []).some((i) => /x-?ray/i.test(i));
+}
+
+/** Step A: must we ask whether they have an X-ray at all? */
+export function needsXrayAvailabilityQuestion(state: HealthPilotState): boolean {
+  return !!state.hpi?.cardioRespRelevant && !askedAboutXray(state) && !state.xrayImageUrl;
+}
+
+/** Step B: they confirmed one exists — must we request the upload? */
+export function needsXrayUpload(state: HealthPilotState): boolean {
+  return (
+    !!state.hpi?.cardioRespRelevant &&
+    patientHasXray(state) &&
+    !state.xrayImageUrl &&
+    !uploadAlreadyRequested(state)
+  );
+}
+
+
 /* ------------------------------------------------------------------ */
 /* 1. RecipientAgent — runs on EVERY turn                              */
 /* ------------------------------------------------------------------ */
@@ -128,9 +177,41 @@ const recipientNode = async (state: HealthPilotState): Promise<Partial<HealthPil
  * way your mcqNode's structured output is lifted out.
  */
 const inquirerNode = async (state: HealthPilotState): Promise<Partial<HealthPilotState>> => {
+  // ---- Deterministic chest X-ray protocol (takes priority over the LLM) ----------
+  // These two turns are too important to leave to the model's discretion: without them,
+  // a cardiorespiratory patient WITH an X-ray never gets asked to upload it, and the
+  // imaging branch of a multi-modal system silently never runs.
+
+  // Step B first: they already confirmed an image exists, so request it now.
+  if (needsXrayUpload(state)) {
+    return {
+      messages: [
+        new AIMessage({
+          content: XRAY_UPLOAD_PROMPT,
+          additional_kwargs: { requests: ["CHEST_XRAY"], phase: "intake" },
+        }),
+      ],
+      askedQuestions: [XRAY_UPLOAD_PROMPT],
+    };
+  }
+
+  // Step A: cardiorespiratory picture and we haven't asked whether they have one.
+  if (needsXrayAvailabilityQuestion(state)) {
+    return {
+      messages: [
+        new AIMessage({
+          content: XRAY_AVAILABILITY_QUESTION,
+          // Empty on purpose — asking, not requesting a file. Keeps the paperclip hidden.
+          additional_kwargs: { requests: [], phase: "intake" },
+        }),
+      ],
+      askedQuestions: [XRAY_AVAILABILITY_QUESTION],
+    };
+  }
+
   const structured = inquirerLLM.withStructuredOutput(InquirySchema, {
     name: "next_question",
-    method: "jsonMode",
+    method: "jsonSchema",
   });
 
   const inquiry = await inquirerPrompt.pipe(structured).invoke({
@@ -174,17 +255,34 @@ const inquirerNode = async (state: HealthPilotState): Promise<Partial<HealthPilo
 const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotState>> => {
   const transcript = state.messages.map((m) => String(m.content ?? "")).join("\n");
 
-  // Deterministic floor. No LLM input. Runs on the HPI text and the analyser's red flags,
-  // NOT on the analyser's chosen urgency — a confidently-wrong model must not be able to
-  // reason its way out of an escalation.
-  const { floor, firedRules } = evaluateSafetyFloor(state.hpi, state.analysis, transcript);
+  // NARROW emergency backstop — fires only for events in progress (unresponsive, FAST
+  // stroke, anaphylaxis, severe bleeding). Chest pain and everything else is the
+  // analyser's call: this is a diagnosis-and-triage system, and overriding the models on
+  // keyword matches would make both the output incoherent and the evaluation meaningless.
+  const { floor: emergencyFloor, firedRules } = evaluateSafetyFloor(state.hpi, state.analysis, transcript);
 
-  const advisory = state.analysis?.suggestedUrgency ?? "NHS_111";
-  const { urgency, overridden } = applyFloor(advisory, floor);
-  const overrideReason = overridden ? firedRules.map((r) => `${r.id}: ${r.reason}`).join("; ") : null;
+  // Separate escalation: did we actually have enough to diagnose?
+  const intakeSufficient = isReadyForDiagnosis(state);
+  const analysisUsable =
+    !!state.analysis && (state.analysis.primaryAssessment?.probability ?? 0) > 0;
+  const { floor: dataFloor, reason: dataReason } = insufficientDataFloor({
+    intakeSufficient,
+    analysisUsable,
+  });
+
+  // The models decide; the floors only ever raise.
+  const modelUrgency = state.analysis?.suggestedUrgency ?? "NHS_111";
+  const combinedFloor = rank(emergencyFloor) >= rank(dataFloor) ? emergencyFloor : dataFloor;
+  const { urgency, overridden } = applyFloor(modelUrgency, combinedFloor);
+
+  const overrideReason = !overridden
+    ? null
+    : firedRules.length
+      ? firedRules.map((r) => `${r.id}: ${r.reason}`).join("; ")
+      : dataReason;
 
   if (overridden) {
-    console.warn(`[SAFETY OVERRIDE] LLM=${advisory} -> RULES=${urgency} :: ${overrideReason}`);
+    console.warn(`[SAFETY] model=${modelUrgency} -> ${urgency} :: ${overrideReason}`);
   }
 
   const pathway = PATHWAYS[urgency];
@@ -207,7 +305,10 @@ const triageNode = async (state: HealthPilotState): Promise<Partial<HealthPilotS
       headline: pathway.headline,
       actions: pathway.actions.join("\n- "),
       safetyNetting: pathway.safetyNetting.join("\n- "),
-      decidedBy: overridden ? "deterministic safety rules (the model was overridden)" : "clinical analysis",
+      decidedBy: overridden
+        ? (firedRules.length ? "emergency safety rule" : "insufficient information to diagnose")
+        : "the diagnostic analysis",
+      dataGap: overridden && !firedRules.length && dataReason ? dataReason : "none",
       overrideReason: overrideReason ?? "n/a",
       analysis: JSON.stringify(state.analysis, null, 2),
       hpi: JSON.stringify(state.hpi, null, 2),
@@ -292,6 +393,11 @@ function isReadyForDiagnosis(state: HealthPilotState): boolean {
   // blocking. If the patient has one we use it; if not, we proceed without it. We never
   // hold the whole pipeline waiting on an image the patient may not have.
   const identityAndComplaint = hasIdentity && hasComplaint;
+
+  // Do NOT diagnose while a chest X-ray step is still outstanding. Previously the gate
+  // opened as soon as PMH/meds/allergies were covered, ending intake before the upload
+  // could be requested — so ChestVision never ran even when the patient had an image.
+  if (needsXrayAvailabilityQuestion(state) || needsXrayUpload(state)) return false;
 
   return identityAndComplaint && hasHistorySweep;
 }

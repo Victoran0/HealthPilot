@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { motion } from "framer-motion";
-import { Activity, Send, User, ArrowLeft, ShieldAlert, StopCircle, Paperclip, X } from "lucide-react";
+import { Activity, Send, User, ArrowLeft, ShieldAlert, StopCircle, Paperclip, X, Stethoscope, ListChecks, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import HeartbeatCanvas from "@/components/HeartBeatCanvas";
 import { useParams } from "next/navigation";
@@ -24,6 +24,75 @@ async function fileToDownscaledDataUrl(file: File, maxEdge = 1024, quality = 0.8
   bitmap.close();
 
   return canvas.toDataURL("image/jpeg", quality);
+}
+
+const URGENCY_STYLE: Record<string, { bar: string; label: string }> = {
+  EMERGENCY_999: { bar: "bg-red-600", label: "Emergency" },
+  A_AND_E: { bar: "bg-red-500", label: "Go to A&E" },
+  NHS_111: { bar: "bg-orange-500", label: "Urgent advice" },
+  GP_URGENT: { bar: "bg-amber-500", label: "See your GP today" },
+  GP_ROUTINE: { bar: "bg-blue-500", label: "GP request form" },
+  PHARMACIST: { bar: "bg-emerald-600", label: "Pharmacist" },
+  SELF_CARE: { bar: "bg-slate-500", label: "Self-care" },
+};
+
+function TriageCard({ triage }: { triage: any }) {
+  if (!triage) return null;
+  const style = URGENCY_STYLE[triage.urgency] ?? URGENCY_STYLE.NHS_111;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 space-y-3">
+      {/* Urgency headline */}
+      <div className={`rounded-xl px-5 py-3 text-white font-semibold shadow-lg ${style?.bar}`}>
+        <div className="text-[10px] uppercase tracking-wider opacity-80">{style?.label}</div>
+        {triage.headline}
+      </div>
+
+      {/* Diagnosis */}
+      {triage.diagnosis?.condition && (
+        <div className="rounded-xl border border-blue-500/30 bg-slate-900/70 p-4 backdrop-blur-md">
+          <div className="mb-2 flex items-center gap-2 text-xs font-mono uppercase text-blue-300">
+            <Stethoscope className="h-3.5 w-3.5" /> Assessment
+          </div>
+          <div className="text-[15px] font-medium text-white">{triage.diagnosis.condition}</div>
+          <div className="mt-1 flex items-center gap-3 text-xs text-slate-400">
+            <span>{Math.round((triage.diagnosis.probability ?? 0) * 100)}% probability</span>
+            <span>·</span>
+            <span>{triage.diagnosis.confidence} confidence</span>
+          </div>
+          {triage.diagnosis.differentials?.length > 0 && (
+            <div className="mt-2 text-xs text-slate-400">
+              Also considered: {triage.diagnosis.differentials.join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      {triage.actions?.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-slate-900/70 p-4 backdrop-blur-md">
+          <div className="mb-2 flex items-center gap-2 text-xs font-mono uppercase text-slate-400">
+            <ListChecks className="h-3.5 w-3.5" /> What to do
+          </div>
+          <ol className="list-decimal space-y-1.5 pl-5 text-[14px] text-slate-200">
+            {triage.actions.map((a: string, i: number) => <li key={i}>{a}</li>)}
+          </ol>
+        </div>
+      )}
+
+      {/* Safety netting */}
+      {triage.safetyNetting?.length > 0 && (
+        <div className="rounded-xl border-l-4 border-amber-400 bg-amber-500/10 p-4">
+          <div className="mb-2 flex items-center gap-2 text-xs font-mono uppercase text-amber-300">
+            <AlertTriangle className="h-3.5 w-3.5" /> When to get help sooner
+          </div>
+          <ul className="list-disc space-y-1 pl-5 text-[14px] text-amber-100/90">
+            {triage.safetyNetting.map((snt: string, i: number) => <li key={i}>{snt}</li>)}
+          </ul>
+        </div>
+      )}
+    </motion.div>
+  );
 }
 
 export default function AssessmentPage() {
@@ -59,9 +128,6 @@ export default function AssessmentPage() {
       : last.content ?? "";
   }, [messages]);
 
-  // --- THE FIX: Smarter Loading State ---
-  // Keeps the loading animation visible if the SDK has created the assistant message 
-  // but hasn't received the first text token yet.
   const showLoading = useMemo(() => {
     if (!isLoading) return false;
     const last = messages.at(-1);
@@ -73,11 +139,10 @@ export default function AssessmentPage() {
       const text = last.parts
         ? last.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
         : last.content;
-      return !text?.trim(); // Show loading if the assistant message is still empty
+      return !text?.trim(); 
     }
     return false;
   }, [isLoading, messages]);
-  // --------------------------------------
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -186,7 +251,9 @@ export default function AssessmentPage() {
               ? m.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
               : m.content;
 
-            if (!text?.trim()) return null;
+            const triage = m.parts?.find((p: any) => p.type === "data-triage")?.data;
+
+            if (!text?.trim() && !triage) return null;
 
             return (
               <motion.div key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex gap-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -197,9 +264,16 @@ export default function AssessmentPage() {
                 )}
                 <div className={`max-w-[85%] space-y-1 ${m.role === "user" ? "text-right" : "text-left"}`}>
                   <div className="text-xs text-slate-500 font-mono uppercase px-1">{m.role === "user" ? "You" : "HealthPilot"}</div>
-                  <div className={`rounded-2xl px-5 py-3.5 text-[15px] leading-relaxed shadow-lg whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white rounded-tr-sm shadow-[0_0_15px_rgba(37,99,235,0.3)]" : "bg-[#0f172a]/80 border border-white/10 text-slate-200 rounded-tl-sm backdrop-blur-md"}`}>
-                    {text}
-                  </div>
+                  
+                  {/* Only render the text bubble if there is actual text */}
+                  {text?.trim() && (
+                    <div className={`rounded-2xl px-5 py-3.5 text-[15px] leading-relaxed shadow-lg whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white rounded-tr-sm shadow-[0_0_15px_rgba(37,99,235,0.3)]" : "bg-[#0f172a]/80 border border-white/10 text-slate-200 rounded-tl-sm backdrop-blur-md"}`}>
+                      {text}
+                    </div>
+                  )}
+
+                  {/* Render the TriageCard if triage data exists */}
+                  {m.role === "assistant" && triage && <TriageCard triage={triage} />}
                 </div>
                 {m.role === "user" && (
                   <div className="w-8 h-8 shrink-0 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center mt-1">
@@ -210,7 +284,6 @@ export default function AssessmentPage() {
             );
           })}
 
-          {/* THE FIX: Replaced the old condition with `showLoading` */}
           {showLoading && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4 justify-start">
               <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-900/40 border border-blue-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(56,189,248,0.4)] mt-1">
@@ -277,7 +350,7 @@ export default function AssessmentPage() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={handlePaperclipClick}
-                className="absolute left-2 z-10 h-10 w-10 flex items-center justify-center rounded-full text-blue-400 ring-2 ring-blue-500/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors mr-4"
+                className="absolute left-2 z-10 h-10 w-10 flex items-center justify-center rounded-full text-blue-400 ring-2 ring-blue-500/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
                 title="Attach your chest X-ray"
               >
                 <Paperclip size={20} />

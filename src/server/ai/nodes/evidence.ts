@@ -63,6 +63,28 @@ export async function chestVisionNode(state: HealthPilotState) {
       labels?: Record<string, number>;
     };
 
+    console.log(
+      "[HealthPilot] Chest X-ray predictions:\n" +
+        (raw.findings?.length
+          ? raw.findings
+              .map(
+                f => `• ${f.label}
+        Probability: ${(f.probability * 100).toFixed(1)}%
+        Predicted: ${f.predicted === 1 ? "✅ Positive" : "❌ Negative"}`
+              )
+              .join("\n\n")
+          : "No findings returned.")
+    );
+
+    console.log(
+      "[HealthPilot] Label map:\n" +
+        (raw.labels
+          ? Object.entries(raw.labels)
+              .map(([label, value]) => `• ${label}: ${value}`)
+              .join("\n")
+          : "No label map returned.")
+    );
+
     const labels = raw.findings
       ? raw.findings.map((f) => ({ pathology: f.label, probability: f.probability }))
       : Object.entries(raw.labels ?? {}).map(([pathology, probability]) => ({ pathology, probability }));
@@ -166,6 +188,20 @@ export async function ehrNode(state: HealthPilotState) {
     const raw = (await res.json()) as {
       conditions: Array<{ label: string; probability: number; threshold: number; predicted: number }>;
     };
+
+    console.log(
+      "[HealthPilot] Clinical model predictions:\n" +
+        (raw.conditions.length
+          ? raw.conditions
+              .map(
+                c => `• ${c.label}
+        Probability: ${(c.probability * 100).toFixed(1)}%
+        Threshold: ${(c.threshold * 100).toFixed(1)}%
+        Predicted: ${c.predicted === 1 ? "✅ Positive" : "❌ Negative"}`
+              )
+              .join("\n\n")
+          : "No conditions returned.")
+    );
 
     // Surface conditions the model flagged above their TUNED threshold first (predicted===1),
     // then fall back to the strongest sub-threshold signals. The tuned threshold matters —
@@ -285,6 +321,24 @@ export async function ragNode(state: HealthPilotState) {
       includeMetadata: true,
     });
 
+    console.log(
+      "[HealthPilot] ragNode passages:\n" +
+        results
+          .filter(r => r.metadata)
+          .map(r => {
+            const m = r.metadata as unknown as EncyclopaediaMeta;
+
+            return `Title: ${m.title ?? ""}
+            Score: ${r.score}
+            Source: ${m.source ?? "medical-encyclopaedia"}
+
+            ${(m.content ?? "").slice(0, 600)}
+
+            ----------------------------------------`;
+                  })
+                  .join("\n")
+    );
+
     return {
       rag: {
         query,
@@ -306,5 +360,6 @@ export async function ragNode(state: HealthPilotState) {
     return {
       rag: { query, passages: [] } satisfies RagResult,
     };
+  } finally {
   }
 }

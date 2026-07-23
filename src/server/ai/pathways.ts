@@ -78,13 +78,15 @@ export const PATHWAYS: Record<Urgency, Pathway> = {
   },
   GP_ROUTINE: {
     urgency: "GP_ROUTINE",
-    headline: "Book a routine GP appointment.",
+    headline: "Submit a GP request form.",
     actions: [
-      "Book an appointment with your GP in the next week or two.",
-      "Keep a short note of when your symptoms happen and what makes them better or worse.",
+      "Fill in your GP practice's online request form (most UK practices call this an eConsult or online triage form).",
+      "You can normally expect a response within a week — this is the right route for something that needs looking at but is not urgent.",
+      "Note when your symptoms happen and what makes them better or worse, and include that in the form.",
     ],
     safetyNetting: [
-      "Bring the appointment forward if your symptoms get worse, or if new symptoms appear.",
+      "If your symptoms get worse while you wait, call your practice or NHS 111 rather than waiting for the form response.",
+      "New or rapidly worsening symptoms mean you should be seen sooner.",
     ],
     severity: "routine",
   },
@@ -104,7 +106,11 @@ export const PATHWAYS: Record<Urgency, Pathway> = {
   SELF_CARE: {
     urgency: "SELF_CARE",
     headline: "This can usually be managed at home.",
-    actions: ["Rest, keep hydrated, and monitor how you feel."],
+    actions: [
+      "Rest, keep hydrated, and monitor how you feel.",
+      "Over-the-counter remedies from any pharmacy or supermarket can help with symptom relief — a pharmacist can point you to the right one.",
+      "Keep track of whether things are improving day to day.",
+    ],
     safetyNetting: [
       "Contact your GP or NHS 111 if things get worse, do not improve as expected, or you become worried.",
     ],

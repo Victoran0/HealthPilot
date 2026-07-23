@@ -43,17 +43,17 @@ function groq(
 // });
 
 /** RecipientAgent — structures the HPI (large JSON schema). Needs reliable structured output. */
-export const recipientLLM = groq("openai/gpt-oss-20b", {
+export const recipientLLM = groq("openai/gpt-oss-120b", {
   temperature: 0.1,
   maxTokens: 2048,
 });
 
 /** InquirerAgent — one discriminating question (small JSON). Fast model is fine. */
-export const inquirerLLM = groq("qwen/qwen3.6-27b", {
+export const inquirerLLM = groq("openai/gpt-oss-20b", {
   temperature: 0.2,
   maxTokens: 1024,
   
-  reasoningEffort: "none",
+  // reasoningEffort: "none",
 });
 
 /** TriageAgent — patient-facing prose. Warmer, streamed. The ONLY patient-visible text. */
