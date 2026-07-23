@@ -42,13 +42,11 @@ function TriageCard({ triage }: { triage: any }) {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 space-y-3">
-      {/* Urgency headline */}
       <div className={`rounded-xl px-5 py-3 text-white font-semibold shadow-lg ${style?.bar}`}>
         <div className="text-[10px] uppercase tracking-wider opacity-80">{style?.label}</div>
         {triage.headline}
       </div>
 
-      {/* Diagnosis */}
       {triage.diagnosis?.condition && (
         <div className="rounded-xl border border-blue-500/30 bg-slate-900/70 p-4 backdrop-blur-md">
           <div className="mb-2 flex items-center gap-2 text-xs font-mono uppercase text-blue-300">
@@ -68,7 +66,6 @@ function TriageCard({ triage }: { triage: any }) {
         </div>
       )}
 
-      {/* Actions */}
       {triage.actions?.length > 0 && (
         <div className="rounded-xl border border-white/10 bg-slate-900/70 p-4 backdrop-blur-md">
           <div className="mb-2 flex items-center gap-2 text-xs font-mono uppercase text-slate-400">
@@ -80,7 +77,6 @@ function TriageCard({ triage }: { triage: any }) {
         </div>
       )}
 
-      {/* Safety netting */}
       {triage.safetyNetting?.length > 0 && (
         <div className="rounded-xl border-l-4 border-amber-400 bg-amber-500/10 p-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-mono uppercase text-amber-300">
@@ -108,6 +104,11 @@ export default function AssessmentPage() {
 
   const [xrayImageUrl, setXrayImageUrl] = useState<string | undefined>(undefined);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // --- NEW: State to track which images belong to which chat messages ---
+  // state: keyed by user-message ordinal, not id
+  const [attachedImages, setAttachedImages] = useState<Record<number, string>>({});
+  // const pendingImageRef = useRef<string | null>(null);
 
   const { messages, status, stop, ...rest } = useChat({
     transport: new DefaultChatTransport({
@@ -143,6 +144,21 @@ export default function AssessmentPage() {
     }
     return false;
   }, [isLoading, messages]);
+
+  // --- NEW: Attach the pending image to the newly created user message ---
+  // useEffect(() => {
+  //   if (pendingImageRef.current && messages.length > 0) {
+  //     // The SDK appends the user message AND an empty assistant message almost simultaneously.
+  //     // We must search backwards to find the actual user message we just sent.
+  //     for (let i = messages.length - 1; i >= 0; i--) {
+  //       if (messages[i].role === "user") {
+  //         setAttachedImages((prev) => ({ ...prev, [messages[i].id]: pendingImageRef.current! }));
+  //         pendingImageRef.current = null; // Clear the pending ref
+  //         break;
+  //       }
+  //     }
+  //   }
+  // }, [messages]);
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -195,14 +211,40 @@ export default function AssessmentPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    // Allow submission if there is EITHER text OR an image
+    if ((!input.trim() && !xrayImageUrl) || isLoading) return;
 
-    sendMessage({ text: input }, { body: { consultId: assessmentId, xrayImageUrl } });
+    // if (xrayImageUrl) {
+    //   pendingImageRef.current = xrayImageUrl;
+    // }
+
+    if (xrayImageUrl) {
+      const userOrdinal = messages.filter((m: any) => m.role === "user").length;
+      const img = xrayImageUrl;
+      setAttachedImages((prev) => ({ ...prev, [userOrdinal]: img }));
+    }
+    
+    // If the user sends an image without typing anything, provide a default message
+    const textToSend = input.trim() ? input : "I have attached my chest X-Ray for review.";
+
+    sendMessage({ text: textToSend }, { body: { consultId: assessmentId, xrayImageUrl } });
 
     setInput("");
     setXrayImageUrl(undefined);
     setAutoScroll(true);
   };
+
+  const imageByMessageId = useMemo(() => {
+    const out: Record<string, string> = {};
+    let idx = 0;
+    for (const m of messages) {
+      if (m.role === "user") {
+        if (attachedImages[idx]) out[m.id] = attachedImages[idx] || "";
+        idx++;
+      }
+    }
+    return out;
+  }, [messages, attachedImages]);
 
   return (
     <div className="fixed inset-0 bg-[#020617] text-slate-200 overflow-hidden selection:bg-blue-500/30">
@@ -253,7 +295,7 @@ export default function AssessmentPage() {
 
             const triage = m.parts?.find((p: any) => p.type === "data-triage")?.data;
 
-            if (!text?.trim() && !triage) return null;
+            if (!text?.trim() && !triage && !attachedImages[m.id]) return null;
 
             return (
               <motion.div key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex gap-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -265,14 +307,22 @@ export default function AssessmentPage() {
                 <div className={`max-w-[85%] space-y-1 ${m.role === "user" ? "text-right" : "text-left"}`}>
                   <div className="text-xs text-slate-500 font-mono uppercase px-1">{m.role === "user" ? "You" : "HealthPilot"}</div>
                   
-                  {/* Only render the text bubble if there is actual text */}
-                  {text?.trim() && (
+                  {/* Render the text bubble (and the image if it exists) */}
+                  {(text?.trim() || attachedImages[m.id]) && (
                     <div className={`rounded-2xl px-5 py-3.5 text-[15px] leading-relaxed shadow-lg whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white rounded-tr-sm shadow-[0_0_15px_rgba(37,99,235,0.3)]" : "bg-[#0f172a]/80 border border-white/10 text-slate-200 rounded-tl-sm backdrop-blur-md"}`}>
+                      
+                      {/* --- NEW: Render the attached image inside the chat bubble --- */}
+                      {attachedImages[m.id] && (
+                        <div className="mb-3 relative w-48 h-48 rounded-xl overflow-hidden border border-blue-400/30 shadow-inner bg-black/20">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={attachedImages[m.id]} alt="Attached X-Ray" className="object-cover w-full h-full" />
+                        </div>
+                      )}
+                      
                       {text}
                     </div>
                   )}
 
-                  {/* Render the TriageCard if triage data exists */}
                   {m.role === "assistant" && triage && <TriageCard triage={triage} />}
                 </div>
                 {m.role === "user" && (
@@ -372,7 +422,12 @@ export default function AssessmentPage() {
                   <StopCircle size={20} />
                 </button>
               ) : (
-                <button type="submit" disabled={!input.trim()} className="h-10 w-10 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.6)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-none">
+                <button 
+                  type="submit" 
+                  // CHANGED: Button is now enabled if there is text OR an image
+                  disabled={!input.trim() && !xrayImageUrl} 
+                  className="h-10 w-10 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.6)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-none"
+                >
                   <Send size={18} className="ml-0.5" />
                 </button>
               )}

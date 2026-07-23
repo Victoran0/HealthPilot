@@ -15,6 +15,14 @@ import type { HealthPilotState } from "../agent";
 export async function analyserNode(state: HealthPilotState) {
   const user = buildEvidenceBundle(state);
 
+  console.log(`
+  ==================== ANALYSER INPUT ====================
+
+  ${user}
+
+  ==============================================================
+  `);
+
   let analysis: Analysis;
   try {
     const raw = await medgemmaComplete({ system: ANALYSER_SYSTEM, user, temperature: 0.2 });
@@ -57,7 +65,7 @@ function buildEvidenceBundle(state: HealthPilotState): string {
     imaging
       ? `## CHEST X-RAY CLASSIFIER (${imaging.model})\n` +
           `Top probabilities: ${imaging.labels.map((l) => `${l.pathology} ${(l.probability * 100).toFixed(1)}%`).join(", ")}\n` +
-          `Above threshold: ${imaging.topFindings.join(", ") || "none"}\n` +
+          `Top 3: ${imaging.topFindings.join(", ") || "none"}\n` +
           `Caveat: ${imaging.note}`
       : `## CHEST X-RAY\nNot performed. Absence of imaging is NOT a negative finding. Do not treat it as reassurance.`,
   );

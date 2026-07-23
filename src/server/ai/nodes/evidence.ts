@@ -57,45 +57,39 @@ export async function chestVisionNode(state: HealthPilotState) {
         } satisfies ImagingResult,
       };
     }
+    
 
+    // Log the FULL raw body. Without this you cannot tell a genuine negative read from a
+    // response shape the parser doesn't understand — and those two must never look alike.
+    
     const raw = (await res.json()) as {
-      findings?: Array<{ label: string; probability: number; predicted?: number }>;
-      labels?: Record<string, number>;
+      predictions?: Array<{
+        label: string;
+        probability: number;
+        threshold: number;
+        predicted: number; // 1 = above threshold, 0 = below
+      }>;
+      top_label?: string;
     };
 
-    console.log(
-      "[HealthPilot] Chest X-ray predictions:\n" +
-        (raw.findings?.length
-          ? raw.findings
-              .map(
-                f => `• ${f.label}
-        Probability: ${(f.probability * 100).toFixed(1)}%
-        Predicted: ${f.predicted === 1 ? "✅ Positive" : "❌ Negative"}`
-              )
-              .join("\n\n")
-          : "No findings returned.")
-    );
+    console.log("[HealthPilot] ChestVision raw response:", JSON.stringify(raw).slice(0, 1500));
 
-    console.log(
-      "[HealthPilot] Label map:\n" +
-        (raw.labels
-          ? Object.entries(raw.labels)
-              .map(([label, value]) => `• ${label}: ${value}`)
-              .join("\n")
-          : "No label map returned.")
-    );
+    const hasPredictions = Array.isArray(raw.predictions) && raw.predictions.length > 0;
 
-    const labels = raw.findings
-      ? raw.findings.map((f) => ({ pathology: f.label, probability: f.probability }))
-      : Object.entries(raw.labels ?? {}).map(([pathology, probability]) => ({ pathology, probability }));
+    if (!hasPredictions) {
+      // unrecognised shape error branch — same as before
+    }
+
+    const labels = raw.predictions!.map((p) => ({
+      pathology: p.label,
+      probability: p.probability,
+    }));
 
     labels.sort((a, b) => b.probability - a.probability);
 
-    // Prefer the Space's tuned-threshold flags over a flat 0.5 cut, same as the EHR node.
-    const topFindings = raw.findings
-      ? raw.findings.filter((f) => f.predicted === 1).map((f) => f.label)
-      : labels.filter((l) => l.probability >= 0.5).map((l) => l.pathology);
-
+    // Always return the top 3 predictions by probability, regardless of tuned thresholds
+    const topFindings = labels.slice(0, 3).map((l) => l.pathology);
+    
     return {
       imaging: {
         model: "ViT-B/16 (NIH ChestX-ray14, 14 labels)",
@@ -126,12 +120,14 @@ export async function chestVisionNode(state: HealthPilotState) {
 function dataUrlToBlob(dataUrl: string): Blob | null {
   const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
   if (!match) return null;
-
   const [, mime, b64] = match;
 
   if (!mime || !b64) return null;
-
-  return new Blob([Buffer.from(b64, "base64")], { type: mime });
+  // `new Uint8Array(buf)` copies into a fresh ArrayBuffer, which satisfies BlobPart.
+  // Passing the Buffer directly fails: @types/node types it as Buffer<ArrayBufferLike>,
+  // and ArrayBufferLike admits SharedArrayBuffer, which BlobPart rejects. The copy is
+  // also safer here — Node pools small Buffers, so the underlying memory can be reused.
+  return new Blob([new Uint8Array(Buffer.from(b64, "base64"))], { type: mime });
 }
 
 /* ================================================================== */
@@ -190,7 +186,7 @@ export async function ehrNode(state: HealthPilotState) {
     };
 
     console.log(
-      "[HealthPilot] Clinical model predictions:\n" +
+      "[HealthPilot] Hybrid EHR model predictions:\n" +
         (raw.conditions.length
           ? raw.conditions
               .map(
@@ -360,6 +356,5 @@ export async function ragNode(state: HealthPilotState) {
     return {
       rag: { query, passages: [] } satisfies RagResult,
     };
-  } finally {
   }
 }

@@ -84,38 +84,73 @@ export const patientVoiceLLM = triageLLM;
 /* MedGemma-27B — the primary diagnostic model, via HF (not Groq).     */
 /* ------------------------------------------------------------------ */
 const hf = new InferenceClient(process.env.HF_TOKEN);
-export const MEDGEMMA_MODEL = "google/medgemma-27b-text-it";
 
+export const MEDGEMMA_MODEL = "google/medgemma-27b-text-it";
+ 
 export async function medgemmaStream(opts: {
   system: string;
   user: string;
   onToken?: (t: string) => void | Promise<void>;
   maxTokens?: number;
   temperature?: number;
+  /** Retries for transient provider errors ("model is busy"). Default 3 attempts. */
+  attempts?: number;
 }): Promise<string> {
-  let full = "";
-  const stream = hf.chatCompletionStream({
-    model: MEDGEMMA_MODEL,
-    // featherless-ai serves medgemma-27b conversationally (verified). Never "auto".
-    provider: (process.env.HF_PROVIDER as never) ?? "featherless-ai",
-    messages: [
-      { role: "system", content: opts.system },
-      { role: "user", content: opts.user },
-    ],
-    max_tokens: opts.maxTokens ?? 1536,
-    temperature: opts.temperature ?? 0.2,
-  });
-
-  for await (const chunk of stream) {
-    const delta = chunk.choices?.[0]?.delta?.content;
-    if (delta) {
-      full += delta;
-      await opts.onToken?.(delta);
+  const maxAttempts = opts.attempts ?? 3;
+  let lastErr: unknown;
+ 
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      let full = "";
+      const stream = hf.chatCompletionStream({
+        model: MEDGEMMA_MODEL,
+        // featherless-ai serves medgemma-27b conversationally (verified). Never "auto".
+        provider: (process.env.HF_PROVIDER as never) ?? "featherless-ai",
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+        max_tokens: opts.maxTokens ?? 1536,
+        temperature: opts.temperature ?? 0.2,
+      });
+ 
+      for await (const chunk of stream) {
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) {
+          full += delta;
+          await opts.onToken?.(delta);
+        }
+      }
+      return full;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err).toLowerCase();
+ 
+      // Only retry transient capacity/rate errors. A malformed request or bad provider
+      // will fail identically every time — retrying just wastes the user's wait.
+      const transient =
+        msg.includes("busy") ||
+        msg.includes("rate limit") ||
+        msg.includes("429") ||
+        msg.includes("503") ||
+        msg.includes("timeout") ||
+        msg.includes("overloaded");
+ 
+      if (!transient || attempt === maxAttempts) throw err;
+ 
+      // Exponential backoff: 1s, 2s. Keeps the whole retry budget under ~3s so we stay
+      // inside the serverless function timeout.
+      const waitMs = 1000 * 2 ** (attempt - 1);
+      console.warn(
+        `[HealthPilot] MedGemma busy (attempt ${attempt}/${maxAttempts}), retrying in ${waitMs}ms`,
+      );
+      await new Promise((r) => setTimeout(r, waitMs));
     }
   }
-  return full;
+ 
+  throw lastErr;
 }
-
+ 
 export async function medgemmaComplete(opts: {
   system: string;
   user: string;
@@ -124,7 +159,7 @@ export async function medgemmaComplete(opts: {
 }): Promise<string> {
   return medgemmaStream(opts);
 }
-
+ 
 /** Strips markdown fences and parses. Throws on failure so the node can fail safe. */
 export function parseJsonBlock<T>(raw: string): T {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -133,3 +168,4 @@ export function parseJsonBlock<T>(raw: string): T {
   if (start === -1) throw new Error("No JSON object found in model output");
   return JSON.parse(body.slice(start)) as T;
 }
+ 
