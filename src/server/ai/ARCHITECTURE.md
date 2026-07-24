@@ -66,7 +66,7 @@ finalUrgency = max(ruleFloor, medgemmaAdvisory)
 ```env
 GROQ_API_KEY=            # gpt-oss-120b — recipient, inquirer, triage prose
 HF_TOKEN=                # MedGemma-27B + your two model endpoints
-HF_PROVIDER=nebius       # pin it; "auto" gives you unpredictable cold starts
+HF_PROVIDER=featherless-ai       # pin it; the model's repo has only featherless-ai inference provider
 GOOGLE_API_KEY=          # Gemini text-embedding-004 for Orama
 CHESTVISION_ENDPOINT=    # ViT-B/16 Space or Inference Endpoint
 EHR_ENDPOINT=            # hybrid MLP + BioClinical-ModernBERT

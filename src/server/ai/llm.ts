@@ -105,7 +105,7 @@ export async function medgemmaStream(opts: {
       const stream = hf.chatCompletionStream({
         model: MEDGEMMA_MODEL,
         // featherless-ai serves medgemma-27b conversationally (verified). Never "auto".
-        provider: (process.env.HF_PROVIDER as never) ?? "featherless-ai",
+        provider: "featherless-ai",
         messages: [
           { role: "system", content: opts.system },
           { role: "user", content: opts.user },

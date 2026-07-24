@@ -259,7 +259,7 @@ npm run dev                       # http://localhost:3000
 ```env
 GROQ_API_KEY=                 # gpt-oss-120b (intake/triage) + llama-3.1-8b (notes)
 HF_TOKEN=                     # MedGemma-27B via Inference Providers
-HF_PROVIDER=auto              # must be a valid provider; "nebius" is not one
+HF_PROVIDER=featherless-ai    # must be a featherless-ai
 UPSTASH_VECTOR_REST_URL=      # RAG hybrid index
 UPSTASH_VECTOR_REST_TOKEN=
 CHESTVISION_ENDPOINT=         # Space root
