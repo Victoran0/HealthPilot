@@ -186,17 +186,33 @@ export default function HealthPilotLanding() {
             initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeIn}
             className="lg:w-1/2"
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Explainable AI for Clinicians</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">Explainable AI & Deterministic Safety</h2>
             <p className="text-slate-300 text-lg mb-8">
-              HealthPilot doesn't just give a diagnosis; it shows its work. Our attention-mapping technology highlights the exact regions in X-rays and specific phrases in clinical notes that led to the triage decision.
+              HealthPilot doesn't just give a diagnosis; it shows its work. Our architecture separates evidence-gathering from decision-making, ensuring that every triage recommendation is backed by transparent clinical reasoning and strict safety protocols.
             </p>
-            <ul className="space-y-4">
-              {['FDA Cleared Algorithms', 'HIPAA Compliant Infrastructure', 'EHR Integration (Epic, Cerner)'].map((item, i) => (
-                <li key={i} className="flex items-center gap-3 text-slate-200">
-                  <div className="w-6 h-6 rounded-full bg-teal-500/20 text-[#38bdf8] flex items-center justify-center">
-                    <Shield className="w-3 h-3" />
+            <ul className="space-y-6">
+              {[
+                { 
+                  title: 'Deterministic Safety Floors', 
+                  desc: 'Hardcoded emergency backstops that automatically override LLM outputs and escalate to 999/A&E upon detecting critical clinical red flags.' 
+                },
+                { 
+                  title: 'Multi-Agent Orchestration', 
+                  desc: 'A LangGraph.js state machine that strictly separates patient intake, multimodal evidence gathering, and diagnostic synthesis.' 
+                },
+                { 
+                  title: 'Multimodal Evidence Fusion', 
+                  desc: 'Simultaneous processing of ViT-B/16 chest X-ray classifications, structured EHR data, and RAG-retrieved clinical guidelines.' 
+                }
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-4 text-slate-200">
+                  <div className="w-8 h-8 shrink-0 rounded-full bg-teal-500/20 text-[#38bdf8] flex items-center justify-center mt-0.5 shadow-[0_0_10px_rgba(56,189,248,0.2)]">
+                    <Shield className="w-4 h-4" />
                   </div>
-                  {item}
+                  <div>
+                    <h4 className="text-white font-bold text-base mb-1">{item.title}</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">{item.desc}</p>
+                  </div>
                 </li>
               ))}
             </ul>
