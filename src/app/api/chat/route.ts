@@ -5,6 +5,7 @@ import {
 import type { UIMessage, UIMessageStreamWriter } from "ai";
 import { HumanMessage } from "@langchain/core/messages";
 import { graph } from "@/server/ai/agent";
+import { auth } from "@/lib/auth";
 
 export const maxDuration = 300; // MedGemma-27B is not a 30s job
 
@@ -20,6 +21,9 @@ export async function POST(req: Request) {
     xrayImageUrl?: string;
     ehrRecord?: Record<string, unknown>;
   } = await req.json();
+
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) return new Response("Unauthorized", { status: 401 });
 
   // We only ever feed the graph the NEWEST message — the checkpointer holds H_{t-1},
   // askedQuestions and round. So there's no need to map the whole array; build one
@@ -182,7 +186,7 @@ export async function POST(req: Request) {
           } catch (stateErr) {
             console.error("[HealthPilot] could not read final graph state:", stateErr);
           } finally {
-            console.log("The graph's state: ", await graph.getState({configurable: { thread_id: consultId }}));
+            console.log("The graph's state: ", await graph.getState({ configurable: { thread_id: consultId } }));
           }
         }
       },

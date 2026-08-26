@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { motion } from "framer-motion";
-import { Activity, Send, User, ArrowLeft, ShieldAlert, StopCircle, Paperclip, X, Stethoscope, ListChecks, AlertTriangle } from "lucide-react";
+import { Activity, Send, User, ArrowLeft, ShieldAlert, StopCircle, Paperclip, X, Stethoscope, ListChecks, AlertTriangle, LogOut } from "lucide-react";
 import Link from "next/link";
 import HeartbeatCanvas from "@/components/HeartBeatCanvas";
 import { useParams } from "next/navigation";
@@ -104,6 +104,19 @@ export default function AssessmentPage() {
 
   const [xrayImageUrl, setXrayImageUrl] = useState<string | undefined>(undefined);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setUserName(d?.name ?? null))
+      .catch(() => setUserName(null));
+  }, []);
+
+  async function handleLogout() {
+    await fetch("/api/tester/sign-out", { method: "POST" });
+    window.location.href = "/sign-in";
+  }
 
   // --- NEW: State to track which images belong to which chat messages ---
   // state: keyed by user-message ordinal, not id
@@ -133,14 +146,14 @@ export default function AssessmentPage() {
     if (!isLoading) return false;
     const last = messages.at(-1);
     if (!last) return false;
-    
+
     if (last.role === "user") return true;
-    
+
     if (last.role === "assistant") {
       const text = last.parts
         ? last.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
         : last.content;
-      return !text?.trim(); 
+      return !text?.trim();
     }
     return false;
   }, [isLoading, messages]);
@@ -197,7 +210,7 @@ export default function AssessmentPage() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; 
+    e.target.value = "";
     if (!file) return;
 
     setUploadError(null);
@@ -223,7 +236,7 @@ export default function AssessmentPage() {
       const img = xrayImageUrl;
       setAttachedImages((prev) => ({ ...prev, [userOrdinal]: img }));
     }
-    
+
     // If the user sends an image without typing anything, provide a default message
     const textToSend = input.trim() ? input : "I have attached my chest X-Ray for review.";
 
@@ -262,10 +275,20 @@ export default function AssessmentPage() {
             HealthPilot <span className="hidden sm:inline text-slate-500 font-normal text-sm ml-2">Triage Session</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium">
-          <ShieldAlert className="w-3 h-3" />
-          <span className="hidden sm:inline">Not for emergencies</span>
-          <span className="sm:hidden">Non-emergency</span>
+        <div className="flex items-center gap-3">
+          {userName && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-medium">
+              <User className="w-3.5 h-3.5 text-blue-400" />
+              <span className="hidden sm:inline">{userName}</span>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
         </div>
       </header>
 
@@ -283,7 +306,7 @@ export default function AssessmentPage() {
             <div className="max-w-[85%] space-y-1 text-left">
               <div className="text-xs text-slate-500 font-mono uppercase px-1">HealthPilot</div>
               <div className="rounded-2xl px-5 py-4 text-[15px] leading-relaxed shadow-lg bg-[#0f172a]/80 border border-white/10 text-slate-200 rounded-tl-sm backdrop-blur-md">
-                Hello. I am HealthPilot, your clinical triage assistant. How can I help you with your symptoms or assessment today?
+                Hello {userName && userName}, I am HealthPilot, your clinical triage assistant. How can I help you with your symptoms or assessment today?
               </div>
             </div>
           </motion.div>
@@ -306,11 +329,11 @@ export default function AssessmentPage() {
                 )}
                 <div className={`max-w-[85%] space-y-1 ${m.role === "user" ? "text-right" : "text-left"}`}>
                   <div className="text-xs text-slate-500 font-mono uppercase px-1">{m.role === "user" ? "You" : "HealthPilot"}</div>
-                  
+
                   {/* Render the text bubble (and the image if it exists) */}
                   {(text?.trim() || imageByMessageId[m.id]) && (
                     <div className={`rounded-2xl px-5 py-3.5 text-[15px] leading-relaxed shadow-lg whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white rounded-tr-sm shadow-[0_0_15px_rgba(37,99,235,0.3)]" : "bg-[#0f172a]/80 border border-white/10 text-slate-200 rounded-tl-sm backdrop-blur-md"}`}>
-                      
+
                       {/* --- NEW: Render the attached image inside the chat bubble --- */}
                       {imageByMessageId[m.id] && (
                         <div className="mb-3 relative w-48 h-48 rounded-xl overflow-hidden border border-blue-400/30 shadow-inner bg-black/20">
@@ -318,7 +341,7 @@ export default function AssessmentPage() {
                           <img src={imageByMessageId[m.id]} alt="Attached X-Ray" className="object-cover w-full h-full" />
                         </div>
                       )}
-                      
+
                       {text}
                     </div>
                   )}
@@ -422,10 +445,10 @@ export default function AssessmentPage() {
                   <StopCircle size={20} />
                 </button>
               ) : (
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   // CHANGED: Button is now enabled if there is text OR an image
-                  disabled={!input.trim() && !xrayImageUrl} 
+                  disabled={!input.trim() && !xrayImageUrl}
                   className="h-10 w-10 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.6)] transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-none"
                 >
                   <Send size={18} className="ml-0.5" />

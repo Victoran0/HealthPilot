@@ -25,7 +25,8 @@ export const env = createEnv({
     UPSTASH_VECTOR_REST_URL: z.string().url(),
     UPSTASH_VECTOR_REST_TOKEN: z.string(),
     OPENROUTER_API_KEY: z.string(),
-    
+    BETTER_AUTH_URL: z.string().url(),
+    APPROVED_TOKENS: z.string(),
   },
 
   /**
@@ -55,6 +56,8 @@ export const env = createEnv({
     UPSTASH_VECTOR_REST_URL: process.env.UPSTASH_VECTOR_REST_URL,
     UPSTASH_VECTOR_REST_TOKEN: process.env.UPSTASH_VECTOR_REST_TOKEN,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    APPROVED_TOKENS: process.env.APPROVED_TOKENS,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

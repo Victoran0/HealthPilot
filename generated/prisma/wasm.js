@@ -172,7 +172,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\Users\\User\\Data Science\\Deep Agents\\HealthPilot\\Multi-Modal-Agentic-AI-System-for-Medical-Diagnosis-and-Triage\\Week-9-Team-9\\Front End\\health_pilot\\generated\\prisma",
+      "value": "C:\\Users\\User\\Data Science\\Deep Agents\\HealthPilot\\HealthPilot\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -186,7 +186,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\Users\\User\\Data Science\\Deep Agents\\HealthPilot\\Multi-Modal-Agentic-AI-System-for-Medical-Diagnosis-and-Triage\\Week-9-Team-9\\Front End\\health_pilot\\prisma\\schema.prisma",
+    "sourceFilePath": "C:\\Users\\User\\Data Science\\Deep Agents\\HealthPilot\\HealthPilot\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
