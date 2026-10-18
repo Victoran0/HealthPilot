@@ -5,7 +5,9 @@ import {
 import type { UIMessage, UIMessageStreamWriter } from "ai";
 import { HumanMessage } from "@langchain/core/messages";
 import { graph } from "@/server/ai/agent";
-import { auth } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { verifySession } from "@/lib/tester-session";
+import { CallbackHandler } from "@langfuse/langchain";
 
 export const maxDuration = 300; // MedGemma-27B is not a 30s job
 
@@ -22,7 +24,8 @@ export async function POST(req: Request) {
     ehrRecord?: Record<string, unknown>;
   } = await req.json();
 
-  const session = await auth.api.getSession({ headers: req.headers });
+
+  const session = verifySession((await cookies()).get("tester_session")?.value);
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   // We only ever feed the graph the NEWEST message — the checkpointer holds H_{t-1},
@@ -53,11 +56,18 @@ export async function POST(req: Request) {
         writer.write({ type: "text-start", id: textStreamId });
 
         try {
+          // create a Langfuse callback handler to log events and spans
+          const langfuseHandler = new CallbackHandler({
+            sessionId: consultId,
+            userId: session.name,
+            tags: ["healthpilot"],
+          });
+
           // Only the newest message goes in. The checkpointer holds H_{t-1},
           // askedQuestions and round — this is a resumed conversation, not a new one.
           const eventStream = await graph.streamEvents(
             { messages: [inputMessage] },
-            config,
+            { ...config, callbacks: [langfuseHandler] },
           );
 
           for await (const event of eventStream) {

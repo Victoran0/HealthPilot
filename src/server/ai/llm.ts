@@ -1,5 +1,6 @@
 import { ChatGroq } from "@langchain/groq";
 import { InferenceClient } from "@huggingface/inference";
+import { AzureChatOpenAI } from "@langchain/openai"
 
 /**
  * PER-TASK MODEL REGISTRY
@@ -31,6 +32,19 @@ function groq(
   });
 }
 
+const azure = (temp: number, maxTokens: number) => {
+  return new AzureChatOpenAI({
+    model: process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME,
+    temperature: temp,
+    maxTokens: maxTokens,
+    maxRetries: 2,
+    azureOpenAIApiKey: process.env.AZURE_OPENAI_API_KEY, // In Node.js defaults to process.env.AZURE_OPENAI_API_KEY
+    azureOpenAIApiInstanceName: process.env.AZURE_OPENAI_API_INSTANCE_NAME, // In Node.js defaults to process.env.AZURE_OPENAI_API_INSTANCE_NAME
+    azureOpenAIApiDeploymentName: process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME, // In Node.js defaults to process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME
+    azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION, // In Node.js defaults to process.env.AZURE_OPENAI_API_VERSION
+  })
+}
+
 /* ------------------------------------------------------------------ */
 /* Task-specific models. Env overrides let you retune without a deploy. */
 /* ------------------------------------------------------------------ */
@@ -43,35 +57,23 @@ function groq(
 // });
 
 /** RecipientAgent — structures the HPI (large JSON schema). Needs reliable structured output. */
-export const recipientLLM = groq("openai/gpt-oss-120b", {
-  temperature: 0.1,
-  maxTokens: 2048,
-});
+export const recipientLLM = azure(0.1, 2048);
 
 /** InquirerAgent — one discriminating question (small JSON). Fast model is fine. */
-export const inquirerLLM = groq("openai/gpt-oss-20b", {
-  temperature: 0.2,
-  maxTokens: 1024,
-  
-  // reasoningEffort: "none",
-});
+export const inquirerLLM = azure(0.2, 1024);
 
 /** TriageAgent — patient-facing prose. Warmer, streamed. The ONLY patient-visible text. */
-export const triageLLM = groq("qwen/qwen3.6-27b", {
-  temperature: 0.3,
-  maxTokens: 1024,
-  reasoningEffort: "none",
-});
+export const triageLLM = azure(0.3, 1024);
 
 /** Clinical SOAP note generation for the EHR text branch. Isolated rate limit so a note
  *  failure never blocks the interview. */
 /** Clinical SOAP note generation — free-text prose, not structured, so a reasoning model
  *  is fine here and offloads work from the gpt-oss rate limits. reasoning_effort:"none"
  *  disables Qwen's reasoning tokens so they never leak into the note the encoder reads. */
-export const noteLLM = groq("qwen/qwen3.6-27b", {
+export const noteLLM = groq("openai/gpt-oss-120b", {
   temperature: 0.2,
   maxTokens: 512,
-  reasoningEffort: "none",
+  reasoningEffort: "low",
 });
 
 /* ------------------------------------------------------------------ */
@@ -86,7 +88,7 @@ export const patientVoiceLLM = triageLLM;
 const hf = new InferenceClient(process.env.HF_TOKEN);
 
 export const MEDGEMMA_MODEL = "google/medgemma-27b-text-it";
- 
+
 export async function medgemmaStream(opts: {
   system: string;
   user: string;
@@ -98,7 +100,7 @@ export async function medgemmaStream(opts: {
 }): Promise<string> {
   const maxAttempts = opts.attempts ?? 3;
   let lastErr: unknown;
- 
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       let full = "";
@@ -113,7 +115,7 @@ export async function medgemmaStream(opts: {
         max_tokens: opts.maxTokens ?? 1536,
         temperature: opts.temperature ?? 0.2,
       });
- 
+
       for await (const chunk of stream) {
         const delta = chunk.choices?.[0]?.delta?.content;
         if (delta) {
@@ -125,7 +127,7 @@ export async function medgemmaStream(opts: {
     } catch (err) {
       lastErr = err;
       const msg = String(err).toLowerCase();
- 
+
       // Only retry transient capacity/rate errors. A malformed request or bad provider
       // will fail identically every time — retrying just wastes the user's wait.
       const transient =
@@ -135,9 +137,9 @@ export async function medgemmaStream(opts: {
         msg.includes("503") ||
         msg.includes("timeout") ||
         msg.includes("overloaded");
- 
+
       if (!transient || attempt === maxAttempts) throw err;
- 
+
       // Exponential backoff: 1s, 2s. Keeps the whole retry budget under ~3s so we stay
       // inside the serverless function timeout.
       const waitMs = 1000 * 2 ** (attempt - 1);
@@ -147,10 +149,10 @@ export async function medgemmaStream(opts: {
       await new Promise((r) => setTimeout(r, waitMs));
     }
   }
- 
+
   throw lastErr;
 }
- 
+
 export async function medgemmaComplete(opts: {
   system: string;
   user: string;
@@ -159,7 +161,7 @@ export async function medgemmaComplete(opts: {
 }): Promise<string> {
   return medgemmaStream(opts);
 }
- 
+
 /** Strips markdown fences and parses. Throws on failure so the node can fail safe. */
 export function parseJsonBlock<T>(raw: string): T {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -168,4 +170,3 @@ export function parseJsonBlock<T>(raw: string): T {
   if (start === -1) throw new Error("No JSON object found in model output");
   return JSON.parse(body.slice(start)) as T;
 }
- 
