@@ -7,7 +7,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { graph } from "@/server/ai/agent";
 import { cookies } from "next/headers";
 import { verifySession } from "@/lib/tester-session";
-import { CallbackHandler } from "@langfuse/langchain";
+// import { CallbackHandler } from "@langfuse/langchain";
 
 export const maxDuration = 300; // MedGemma-27B is not a 30s job
 
@@ -57,17 +57,18 @@ export async function POST(req: Request) {
 
         try {
           // create a Langfuse callback handler to log events and spans
-          const langfuseHandler = new CallbackHandler({
-            sessionId: consultId,
-            userId: session.name,
-            tags: ["healthpilot"],
-          });
+          // const langfuseHandler = new CallbackHandler({
+          //   sessionId: consultId,
+          //   userId: session.name,
+          //   tags: ["healthpilot"],
+          // });
 
           // Only the newest message goes in. The checkpointer holds H_{t-1},
           // askedQuestions and round — this is a resumed conversation, not a new one.
           const eventStream = await graph.streamEvents(
             { messages: [inputMessage] },
-            { ...config, callbacks: [langfuseHandler] },
+            // { ...config, callbacks: [langfuseHandler] },
+            { ...config },
           );
 
           for await (const event of eventStream) {
