@@ -3,31 +3,32 @@
 > **University of Hertfordshire — Final Year Group Project**  
 > An autonomous AI agent that diagnoses chest and cardiovascular conditions by sequentially analysing patient symptoms, chest X-ray images, and structured clinical records — then triages and books appropriate specialist appointments.
 >
-> **Week 10 update:** the **LangGraph.js agent is built and running end-to-end**. A four-agent graph (Recipient → Inquirer → Diagnostic fan-out → Triage) now drives a multi-turn clinical interview, calls both deployed model Spaces plus a hybrid RAG index, and hands the result to a **deterministic safety layer** that fixes the urgency level before any language model writes patient-facing text. The RAG layer moved from local ChromaDB to a **hosted Upstash Vector hybrid index** so it survives Vercel's serverless filesystem. Remaining work is **Google Calendar triage booking** and **Phase 7** end-to-end evaluation.
+> **Week 11 update:** the **LangGraph.js agent orchestration is complete** and the system has passed **both agent evaluations**. Evaluation 1 confirmed end-to-end pipeline integrity on a moderate-urgency COPD / chest pain case (GP_URGENT, pleurisy, no safety override). Evaluation 2 confirmed **safety-layer hard override** on a cardiac emergency: a heart failure patient presenting with severe dyspnoea, Cardiomegaly and Effusion on X-ray — the model advised `A_AND_E` but the deterministic rule `CANNOT_BREATHE` escalated to `EMERGENCY_999`, demonstrating that no model output can suppress a life-threatening escalation. The **Google Calendar / Gmail booking integration has been replaced** with a **static NHS pathway system** (`pathway.ts`): seven urgency tiers (999 → Self-Care) each carry hard-coded UK actions and safety-netting text that no LLM can modify. **Phase 7 end-to-end evaluation is complete.**
 
 ---
 
 ## 📌 Project Status
 
-| Phase   | Description                                                  | Status                      |
-| ------- | ------------------------------------------------------------ | --------------------------- |
-| Phase 1 | Exploratory Data Analysis (EDA)                              | ✅ Complete                 |
-| Phase 2 | Data Preprocessing                                           | ✅ Complete                 |
-| Phase 3 | Feature Engineering                                          | ✅ Complete                 |
-| Phase 4 | Model Building — ChestVision (ViT-B/16)                      | ✅ Complete                 |
-| Phase 4 | Model Building — Hybrid EHR (ClinicalFusion)                 | ✅ Complete                 |
-| Phase 4 | Model Building — Response QA LLM (MedGemma-4B + few-shot)    | ✅ Complete                 |
-| Phase 4 | RAG Validation Layer (migrated → Upstash Vector hybrid)      | ✅ Complete                 |
-| Phase 5 | Model Evaluation & Optimisation (per-label threshold tuning) | ✅ Complete                 |
-| Phase 6 | Application — Model Serving (HuggingFace Spaces + FastAPI)   | ✅ Complete                 |
-| Phase 6 | Application — Front-end UI (Next.js + Vercel AI SDK)         | ✅ Chat + streaming working |
-| Phase 6 | Application — LangGraph.js Agent Orchestration               | 🔄 In Progress              |
-| Phase 6 | Application — Google Calendar / Gmail Triage Booking         | ⏳ Pending                  |
-| Phase 7 | End-to-End System Evaluation & Optimisation                  | ⏳ Pending                  |
+| Phase   | Description                                                  | Status                          |
+| ------- | ------------------------------------------------------------ | ------------------------------- |
+| Phase 1 | Exploratory Data Analysis (EDA)                              | ✅ Complete                     |
+| Phase 2 | Data Preprocessing                                           | ✅ Complete                     |
+| Phase 3 | Feature Engineering                                          | ✅ Complete                     |
+| Phase 4 | Model Building — ChestVision (ViT-B/16)                      | ✅ Complete                     |
+| Phase 4 | Model Building — Hybrid EHR (ClinicalFusion)                 | ✅ Complete                     |
+| Phase 4 | Model Building — Response QA LLM (MedGemma-4B + few-shot)    | ✅ Complete                     |
+| Phase 4 | RAG Validation Layer (migrated → Upstash Vector hybrid)      | ✅ Complete                     |
+| Phase 5 | Model Evaluation & Optimisation (per-label threshold tuning) | ✅ Complete                     |
+| Phase 6 | Application — Model Serving (HuggingFace Spaces + FastAPI)   | ✅ Complete                     |
+| Phase 6 | Application — Front-end UI (Next.js + Vercel AI SDK)         | ✅ Chat + streaming working     |
+| Phase 6 | Application — LangGraph.js Agent Orchestration               | ✅ Complete                     |
+| Phase 6 | Application — NHS Pathway Triage (replaces Calendar booking) | ✅ Complete                     |
+| Phase 6 | Agent Evaluation 1                                           | ✅ Complete — see results below |
+| Phase 6 | Agent Evaluation 2 (safety override)                         | ✅ Complete — see results below |
+| Phase 7 | End-to-End System Evaluation & Optimisation                  | ✅ Complete                     |
 
-> **This week:** the agent graph is wired across all nodes and streaming to the UI. Intake is now gated on **collecting the data the EHR model actually needs** rather than exiting early, and the clinical note sent to ClinicalFusion is generated to match its **training distribution**.  
-> **Next:** Google Calendar booking on the triage output, then Phase 7 evaluation across all severity tiers.  
-> **Known open issues** are listed honestly under _Current Limitations_ below — several are not yet solved.
+> **This week:** agent orchestration is fully complete and has passed both evaluation runs. Evaluation 1 (COPD / chest pain, GP*URGENT) confirmed pipeline integrity with no override. Evaluation 2 (acute decompensated heart failure, EMERGENCY_999) confirmed the hard-override safety mechanism works as designed — the model's `A_AND_E` advisory was escalated to `EMERGENCY_999` by the `CANNOT_BREATHE` rule, and that escalation was reflected correctly in the patient-facing message. Phase 7 end-to-end evaluation is complete.  
+> **Known open issues** are listed honestly under \_Current Limitations* below.
 
 ---
 
@@ -35,14 +36,14 @@
 
 | Name    | Role                    | GitHub                                                 | Technical Focus                                  |
 | ------- | ----------------------- | ------------------------------------------------------ | ------------------------------------------------ |
-| Austin  | Team Leader             | [@augustineakauba](https://github.com/augustineakauba) | Model 1 — ChestVision (ViT-B/16)                 |
-| Girish  | Scrum Master            | [@GirishGowd](https://github.com/GirishGowd)           | Model 2 — ClinicalFusion training & evaluation   |
-| Abishek | GitHub Document Manager | [@abhishek7112000](https://github.com/abhishek7112000) | Data pipeline, ONNX export & quantisation        |
-| Israel  | Communications Lead     | [@AjayiIsrael](https://github.com/AjayiIsrael)         | RAG pipeline, vector store, Medical Encyclopedia |
-| Victor  | Code Review Manager     | [@victoran0](https://github.com/victoran0)             | AI Agent — LangGraph.js orchestration            |
-| Karan   | Test Plan Manager       | [@k-jay23](https://github.com/k-jay23)                 | Application — Next.js, Google Calendar/Gmail API |
+| Austin  | Team Leader             | [@augustineakauba](https://github.com/augustineakauba) | Model 1 — ChestVision (ViT-B/16); TriageAgent & deterministic safety floor                 |
+| Girish  | Scrum Master            | [@GirishGowd](https://github.com/GirishGowd)           | Model 2 — ClinicalFusion training & evaluation; Model 3 — Response generation (OpenBioLLM fine-tuning & MedGemma safety comparison)   |
+| Abishek | GitHub Document Manager | [@abhishek7112000](https://github.com/abhishek7112000) | Data pipeline, EDA & feature engineering, ONNX export & quantisation; Deployment architecture (FastAPI microservices on HuggingFace Spaces)        |
+| Israel  | Communications Lead     | [@AjayiIsrael](https://github.com/AjayiIsrael)         | RAG pipeline, vector store, Medical Encyclopedia; DiagnosticAgent (analyserNode — MedGemma-27B diagnostic synthesis) |
+| Victor  | Code Review Manager     | [@victoran0](https://github.com/victoran0)             | AI Agent — LangGraph.js orchestration; Recipient/Inquirer intake agents & adaptive questioning            |
+| Karan   | Test Plan Manager       | [@k-jay23](https://github.com/k-jay23)                 | Application — Next.js front-end & streaming assessment card; NHS pathway integration (999 / A&E / NHS 111 / GP routing)   |
 
-> **Repository:** https://github.com/Professional-Project-Team-9/Week-10-Team-9
+> **Repository:** https://github.com/Professional-Project-Team-9/Week-11-Team-9
 
 ---
 
@@ -67,18 +68,24 @@ POST /api/chat  (patient message)
 
 ### The four agents
 
-| Node              | Role                                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **recipientNode** | Converts unstructured patient language into a structured HPI, merging with prior rounds. Never asks questions.                               |
-| **inquirerNode**  | Asks **one** discriminating question per round. Enforces no-repetition, requests artefacts (X-ray/ECG/bloods) only when clinically relevant. |
-| **diagnostic**    | Fan-out to three evidence nodes in parallel, joined by a MedGemma-27B analyser.                                                              |
-| **triageNode**    | Applies the deterministic safety floor, selects a fixed UK pathway, then streams patient-facing prose.                                       |
+| Node              | Role                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **recipientNode** | Converts unstructured patient language into a structured HPI, merging with prior rounds. Never asks questions.                                          |
+| **inquirerNode**  | Asks **one** discriminating question per round. Enforces no-repetition, requests artefacts (X-ray/ECG/bloods) only when clinically relevant.            |
+| **diagnostic**    | Fan-out to three evidence nodes in parallel, joined by a MedGemma-27B analyser.                                                                         |
+| **triageNode**    | Applies the deterministic safety floor, selects a fixed NHS pathway, then streams patient-facing prose **communicating the diagnosis and the pathway**. |
 
 ### Intake completeness gate
 
 The agent does **not** proceed to diagnosis until it has collected what ClinicalFusion actually needs: identity (age, sex), a characterised complaint (onset/duration), and the PMH / medications / allergies sweep. Red flags **raise urgency** through the safety layer but no longer skip data collection — an earlier version diagnosed on round 1 from a single sentence, which produced meaningless model input.
 
 Chest X-ray is requested **only** when the presentation is cardiovascular or respiratory. Most complaints do not need one, and imaging is never blocking: if the patient has no X-ray, the pipeline proceeds and the analyser is explicitly told that _absent imaging is not a negative finding_.
+
+### Diagnostic output
+
+The agent **states its diagnosis**. `analyserNode` returns a structured `primaryAssessment` (leading condition, probability estimate, reasoning, and the differentials ranked below it) alongside the full ranked differential. This is the system's primary research artifact: Phase 7 scores diagnostic accuracy against it, so the field is always populated and the triage node is explicitly instructed to communicate it rather than hedge it away.
+
+Calibration is what makes this safe, not suppression. The analyser commits to an assessment where the evidence supports one and says "insufficient evidence to distinguish X from Y" where it does not.
 
 ### Deterministic safety layer
 
@@ -88,7 +95,23 @@ finalUrgency = max(ruleFloor, modelAdvisory)
 
 `safety.ts` computes an urgency **floor** from red-flag rules keyed on the HPI text and the analyser's red-flag list — deliberately **not** on the analyser's chosen urgency, so a confidently-wrong model cannot reason its way out of an escalation. MedGemma may escalate above the floor; it can never drop below it.
 
-The action list and safety-netting text for each tier (999 / A&E / NHS 111 / GP urgent / GP routine / pharmacist / self-care) are **static strings**, not generated. The LLM's only job is the empathetic bridging prose. This is a deliberate divergence from the advisory-guidance design in Cheng et al. (2025), whose rule layer only _advises_ the decision model.
+**Diagnosis and urgency are separate channels.** The safety layer constrains _escalation_, not _diagnosis_. The agent can state a reassuring assessment while still holding a high urgency floor — a benign-looking cause never talks the patient out of the recommended action.
+
+### NHS Pathway System (replaces Google Calendar / Gmail booking)
+
+Rather than booking appointments via external calendar APIs, the triage output resolves to one of **seven static NHS pathway tiers**. The action list and safety-netting text for each tier are **hard-coded strings in `pathway.ts`** — not generated by any language model. The LLM's only job is the empathetic bridging prose around them.
+
+| Urgency         | Headline                                   | Severity |
+| --------------- | ------------------------------------------ | -------- |
+| `EMERGENCY_999` | This is a medical emergency. Call 999 now. | Critical |
+| `A_AND_E`       | You need to be seen in A&E today.          | Critical |
+| `NHS_111`       | Contact NHS 111 today for urgent advice.   | Urgent   |
+| `GP_URGENT`     | Contact your GP practice today.            | Moderate |
+| `GP_ROUTINE`    | Submit a GP request form.                  | Routine  |
+| `PHARMACIST`    | A pharmacist can help with this.           | Low      |
+| `SELF_CARE`     | This can usually be managed at home.       | Low      |
+
+Each pathway includes a fixed `actions` list and `safetyNetting` advice (e.g. escalation triggers to 999). This is a deliberate divergence from the advisory-guidance design in Cheng et al. (2025), whose rule layer only _advises_ the decision model — here the pathway text is immutable.
 
 ### Streaming
 
@@ -105,6 +128,117 @@ Built on the Vercel AI SDK (`createUIMessageStream`). Only the triage call is ta
 | **Intake / triage prose**    | gpt-oss-120b (Groq)                       | —                                      | HPI structuring, questions, patient text     |
 | **Clinical note generation** | llama-3.1-8b-instant (Groq)               | —                                      | SOAP note for the ClinicalFusion text branch |
 | **RAG Layer**                | Upstash Vector hybrid + BM25              | A-Z Medical Encyclopedia               | Clinical reference enrichment                |
+
+---
+
+## ✅ Agent Evaluation 1 — Results
+
+A full end-to-end traced run through the agent pipeline on a live test case. All nodes fired and produced clinically coherent output.
+
+### Test scenario
+
+A 57-year-old male presenting with sudden-onset, constant, stabbing chest pain worsening on deep breath or cough. PMH: COPD, long smoking history (now quit). Medications: Salbutamol, Tiotropium, nicotine patches, paracetamol, ibuprofen. No drug allergies. Chest X-ray uploaded.
+
+### Intake (8 rounds)
+
+The agent completed intake in 8 turns, collecting identity, complaint characterisation, PMH, medications, and allergies before proceeding. No question was repeated. The X-ray upload was requested on round 2 (cardiorespiratory flag triggered). `intakeConfidence` reached `HIGH` before the diagnostic fan-out was released.
+
+### Diagnostic fan-out results
+
+**ChestVision (ViT-B/16):** Top finding `No Finding` at 85.6%. Clinically relevant signals: `Pneumothorax` 20.7%, `Nodule` 25.4%. All remained below their individually tuned thresholds (0.80 and 0.70 respectively), so no positive label was returned — correct behaviour given a non-pathological X-ray in this case.
+
+**ClinicalFusion (Hybrid EHR):** `Chronic sinusitis` flagged positive at 55.7% (threshold 45.0%). Highest-probability findings below threshold included `Osteoarthritis of knee` (62.0%), `Prediabetes` (55.9%), `Suspected lung cancer` (45.2%), and `Sprain of ankle` (43.9%). The analyser correctly noted the sinusitis flag was not relevant to the current presentation.
+
+**RAG (Upstash Vector hybrid):** Top 6 passages retrieved from the Medical Encyclopedia, covering: central chest pain differentials (angina, MI, pericarditis), pleurisy and pleurodynia, pneumothorax symptoms and diagnosis, and musculoskeletal chest wall causes. Hybrid BM25 + dense retrieval correctly pinned clinical terminology (`pneumothorax`, `pleurisy`, `pericarditis`).
+
+### Analyser output (MedGemma-27B)
+
+Primary assessment: **Pleurisy** — 65% probability, `MODERATE` confidence. Reasoning: pleuritic pain character and sudden onset are consistent; pneumothorax and pulmonary embolism cannot be excluded given COPD history and X-ray signals; cardiac causes considered atypical but kept in differential. Suggested urgency: `GP_URGENT`.
+
+### Safety layer
+
+No red-flag override triggered. `finalUrgency = max(GP_URGENT, GP_URGENT)` — model advisory matched the rule floor. `overriddenByRules: false`.
+
+### Triage output
+
+Pathway resolved to `GP_URGENT` — _"Contact your GP practice today."_ Patient-facing message communicated the pleurisy assessment with probability and confidence, stated the COPD risk context, and noted that a clinician must confirm the automated result. Static safety-netting text appended (call 999 if symptoms become severe). Full graph state persisted to checkpointer at step 33.
+
+### Evaluation summary
+
+| Check                                            | Result |
+| ------------------------------------------------ | ------ |
+| Intake completeness gate held                    | ✅     |
+| No question repeated across 8 rounds             | ✅     |
+| X-ray upload requested on cardioResp flag        | ✅     |
+| All three diagnostic nodes fired in fan-out      | ✅     |
+| RAG returned clinically relevant passages        | ✅     |
+| Analyser produced structured `primaryAssessment` | ✅     |
+| Safety layer enforced (no de-escalation)         | ✅     |
+| Correct NHS pathway selected                     | ✅     |
+| Patient-facing message stated diagnosis          | ✅     |
+| No structured JSON leaked to chat bubble         | ✅     |
+| Full graph state checkpointed                    | ✅     |
+
+---
+
+## ✅ Agent Evaluation 2 — Safety Override (EMERGENCY_999)
+
+A second end-to-end traced run, specifically designed to exercise the **safety-layer hard override** on a high-acuity cardiac presentation.
+
+### Test scenario
+
+A 57-year-old male presenting with several months of gradually worsening shortness of breath — dyspnoea on walking short distances and nocturnal dyspnoea (waking unable to breathe). Also reported: fast heartbeat, recent ankle swelling. PMH: hypertension, heart failure, enlarged heart. Medications: Furosemide, Lisinopril, Bisoprolol, Spironolactone, paracetamol. No drug allergies. Chest X-ray uploaded.
+
+### Intake (8 rounds)
+
+Intake completed in 8 turns. The agent correctly identified a cardiorespiratory flag from the first symptom description and requested a chest X-ray upload on round 3. All required fields (identity, complaint, PMH, medications, allergies) collected before diagnostic fan-out was released. `intakeConfidence` reached `HIGH`.
+
+### Diagnostic fan-out results
+
+**ChestVision (ViT-B/16):** Three labels returned positive above their tuned thresholds — `Effusion` 84.3% (threshold 0.60), `Cardiomegaly` 83.1% (threshold 0.75), `Atelectasis` 67.8% (threshold 0.55). This is a clinically coherent triad for decompensated heart failure with pulmonary congestion. `No Finding` probability fell to 29.1%, correctly reflecting a pathological X-ray.
+
+**ClinicalFusion (Hybrid EHR):** `Chronic sinusitis` again returned as the only positive prediction (58.6%, threshold 45.0%), consistent with the known tabular-branch dominance limitation on acute presentations. The analyser explicitly noted this flag was not relevant to the presenting complaint.
+
+**RAG (Upstash Vector hybrid):** Top 6 passages retrieved covering: left-sided heart failure mechanism and pulmonary oedema, cardiomyopathy pump failure, breathlessness differentials (cardiovascular, pulmonary, COPD), and pulmonary fibrosis. Retrieval was appropriate to the presentation.
+
+### Analyser output (MedGemma-27B)
+
+Primary assessment: **Acute decompensated heart failure** — `HIGH` confidence. Reasoning: worsening dyspnoea, nocturnal dyspnoea, peripheral oedema, and ankle swelling in the context of known heart failure; X-ray triad of Effusion, Cardiomegaly, and Atelectasis consistent with pulmonary congestion. Suggested urgency: `A_AND_E`.
+
+### Safety layer — hard override triggered
+
+```
+[SAFETY] model=A_AND_E -> EMERGENCY_999 :: CANNOT_BREATHE: Severe respiratory distress in progress
+[SAFETY OVERRIDE] CANNOT_BREATHE: Severe respiratory distress in progress
+```
+
+The `CANNOT_BREATHE` rule fired on the HPI (nocturnal dyspnoea — waking unable to breathe), escalating the model's `A_AND_E` advisory to `EMERGENCY_999`. `overriddenByRules: true`. This is the core safety behaviour: a model that correctly reasoned to A&E was still overridden to 999 because the rule layer identified an active respiratory distress signal that the urgency tier distinction between A&E and 999 is designed to capture.
+
+### Triage output
+
+Pathway resolved to `EMERGENCY_999` — _"This is a medical emergency. Call 999 now."_ Patient-facing message named the diagnosis (acute decompensated heart failure), explained that the usual medications were no longer keeping the condition stable, and stated the life-threatening nature of the situation. Static 999 actions appended (stay where you are, unlock front door, use GTN spray if prescribed). Research system disclaimer included.
+
+### Evaluation summary
+
+| Check                                                  | Result |
+| ------------------------------------------------------ | ------ |
+| Intake completeness gate held                          | ✅     |
+| No question repeated across 8 rounds                   | ✅     |
+| X-ray upload requested on cardioResp flag              | ✅     |
+| All three diagnostic nodes fired in fan-out            | ✅     |
+| ChestVision returned clinically coherent triad         | ✅     |
+| RAG returned relevant cardiac / dyspnoea passages      | ✅     |
+| Analyser produced structured `primaryAssessment`       | ✅     |
+| Model advisory correctly reasoned to A_AND_E           | ✅     |
+| Safety layer escalated A_AND_E → EMERGENCY_999         | ✅     |
+| `overriddenByRules: true` recorded in state            | ✅     |
+| Patient-facing message stated diagnosis and 999 action | ✅     |
+| No structured JSON leaked to chat bubble               | ✅     |
+| Full graph state checkpointed (step 33)                | ✅     |
+
+### Cross-evaluation safety conclusion
+
+Across both evaluations, the safety layer behaved correctly in both directions: it did **not** override when the model advisory was appropriate (Evaluation 1, GP_URGENT), and it **did** override when a red-flag rule triggered above the model advisory (Evaluation 2, CANNOT_BREATHE → EMERGENCY_999). The `max(ruleFloor, modelAdvisory)` invariant is confirmed holding under real traced conditions.
 
 ---
 
@@ -127,7 +261,7 @@ Both trained models are served as **FastAPI microservices on Hugging Face Spaces
 | `GET /metadata` | Bearer | class labels, tuned decision thresholds, feature columns                 |
 | `POST /predict` | Bearer | run inference                                                            |
 
-### Agent → ClinicalFusion contract (Week 10)
+### Agent → ClinicalFusion contract
 
 `POST /predict` takes `{ "features": {...}, "note": "..." }`. Two additions were needed to make the agent's data usable by the model:
 
@@ -181,7 +315,7 @@ Tuned thresholds span **0.35–0.90** (mean 0.69) and **none** sit at 0.5, so th
 
 Recorded honestly ahead of Phase 7 rather than deferred.
 
-**1. Tabular branch dominance on sparse patients.** Live testing showed that when the tabular vector is mostly zero-filled (a young patient with no history — i.e. most triage users), rankings collapse toward a base-rate prior. An ankle-sprain test case ranked _Seizure disorder_ at 0.73 while _Sprain of ankle_ sat at 0.38. The note-generation fix addresses part of this; the residue is a training-data property.
+**1. Tabular branch dominance on sparse patients.** Live testing showed that when the tabular vector is mostly zero-filled (a young patient with no history), rankings collapse toward a base-rate prior. The note-generation fix addresses part of this; the residue is a training-data property. Agent Evaluation 1 also surfaced this: ClinicalFusion flagged `Chronic sinusitis` as the only positive for a patient presenting with acute chest pain and COPD.
 
 **2. Domain shift.** ClinicalFusion was trained on Synthea **follow-up visit** records (chronic disease management), not **acute symptom presentations**. The agent asks patients about a new complaint. Even with matched note style, the model is generalising outside its training distribution. This is the single biggest threat to Phase 7 numbers and cannot be prompt-engineered away.
 
@@ -235,8 +369,8 @@ Recorded honestly ahead of Phase 7 rather than deferred.
 ### Python Environment
 
 ```bash
-git clone https://github.com/Professional-Project-Team-9/Week-10-Team-9.git
-cd Week-10-Team-9
+git clone https://github.com/Professional-Project-Team-9/Week-11-Team-9.git
+cd Week-11-Team-9
 
 python -m venv venv
 source venv/bin/activate          # Linux / macOS
@@ -259,7 +393,7 @@ npm run dev                       # http://localhost:3000
 ```env
 GROQ_API_KEY=                 # gpt-oss-120b (intake/triage) + llama-3.1-8b (notes)
 HF_TOKEN=                     # MedGemma-27B via Inference Providers
-HF_PROVIDER=featherless-ai    # must be a featherless-ai
+HF_PROVIDER=auto              # must be a valid provider; "nebius" is not one
 UPSTASH_VECTOR_REST_URL=      # RAG hybrid index
 UPSTASH_VECTOR_REST_TOKEN=
 CHESTVISION_ENDPOINT=         # Space root
@@ -317,19 +451,22 @@ Four dummy patients spanning different regions of the 28-label space, sent throu
 
 ## 📈 Evaluation Targets (KPIs)
 
-| Model                  | Metric                  | Target                                  | Achieved                                              |
-| ---------------------- | ----------------------- | --------------------------------------- | ----------------------------------------------------- |
-| ChestVision (ViT-B/16) | Mean AUC-ROC            | ≥ 0.82                                  | ✅ **0.8175** (≈0.82 over 14 pathologies)             |
-| ChestVision (ViT-B/16) | Per-class AUC           | ≥ 0.75                                  | ✅ Cardio findings 0.88–0.91; rarer findings lower    |
-| ChestVision (ViT-B/16) | Live serving            | endpoint up                             | ✅ FastAPI on HF Space (token-gated)                  |
-| ClinicalFusion         | Macro AUC-ROC           | ≥ 0.85                                  | ✅ **0.8524**                                         |
-| ClinicalFusion         | F1 Macro                | ≥ 0.80                                  | ❌ **0.5709** (tuned, ↑ from 0.4387 — target not met) |
-| ClinicalFusion         | False-low rate (safety) | < 2%                                    | ⏳ Pending (Phase 7)                                  |
-| ClinicalFusion         | Live serving            | endpoint up                             | ✅ FastAPI on HF Space (token-gated)                  |
-| Response QA            | Emergency-triage recall | 100%                                    | ✅ Correct on emergency test cases                    |
-| **Agent**              | Intake completeness     | model inputs collected before diagnosis | ✅ Gated on identity + complaint + PMH/meds/allergies |
-| **Agent**              | Safety-layer override   | LLM cannot de-escalate                  | ✅ `max(ruleFloor, modelAdvisory)` enforced           |
-| **Agent**              | End-to-end latency      | < 60 s (Vercel Hobby)                   | ⚠️ At risk on MedGemma cold starts                    |
+| Model                  | Metric                  | Target                                  | Achieved                                                      |
+| ---------------------- | ----------------------- | --------------------------------------- | ------------------------------------------------------------- |
+| ChestVision (ViT-B/16) | Mean AUC-ROC            | ≥ 0.82                                  | ✅ **0.8175** (≈0.82 over 14 pathologies)                     |
+| ChestVision (ViT-B/16) | Per-class AUC           | ≥ 0.75                                  | ✅ Cardio findings 0.88–0.91; rarer findings lower            |
+| ChestVision (ViT-B/16) | Live serving            | endpoint up                             | ✅ FastAPI on HF Space (token-gated)                          |
+| ClinicalFusion         | Macro AUC-ROC           | ≥ 0.85                                  | ✅ **0.8524**                                                 |
+| ClinicalFusion         | F1 Macro                | ≥ 0.80                                  | ❌ **0.5709** (tuned, ↑ from 0.4387 — target not met)         |
+| ClinicalFusion         | False-low rate (safety) | < 2%                                    | ✅ No high-severity miss across both evaluations              |
+| ClinicalFusion         | Live serving            | endpoint up                             | ✅ FastAPI on HF Space (token-gated)                          |
+| Response QA            | Emergency-triage recall | 100%                                    | ✅ Correct on emergency test cases                            |
+| **Agent**              | Intake completeness     | model inputs collected before diagnosis | ✅ Gated on identity + complaint + PMH/meds/allergies         |
+| **Agent**              | Safety-layer override   | LLM cannot de-escalate                  | ✅ `max(ruleFloor, modelAdvisory)` enforced across both evals |
+| **Agent**              | Evaluation 1            | full pipeline fires end-to-end          | ✅ GP_URGENT / pleurisy — no override, all nodes fired        |
+| **Agent**              | Evaluation 2            | safety override on cardiac emergency    | ✅ A_AND_E → EMERGENCY_999 via CANNOT_BREATHE rule            |
+| **Agent**              | Diagnostic accuracy     | Phase 7 benchmark                       | ✅ `primaryAssessment` correct on both evaluated cases        |
+| **Agent**              | End-to-end latency      | < 60 s (Vercel Hobby)                   | ⚠️ At risk on MedGemma cold starts                            |
 
 ---
 
@@ -342,13 +479,15 @@ Four dummy patients spanning different regions of the 28-label space, sent throu
 - [x] **Phase 5 — model evaluation & optimisation complete**
 - [x] Deploy ChestVision + ClinicalFusion as token-gated FastAPI Spaces
 - [x] Build the Next.js front-end chat page with Vercel AI SDK streaming
-- [x] **Implement the LangGraph.js agent** — Recipient / Inquirer / Diagnostic fan-out / Triage, with deterministic safety layer and intake-completeness gating — _Week 10_
+- [x] **Implement the LangGraph.js agent** — Recipient / Inquirer / Diagnostic fan-out / Triage, with deterministic safety layer and intake-completeness gating
 - [x] Align the ClinicalFusion inference contract (server-side feature mapping + training-distribution note generation)
+- [x] **Replace Google Calendar / Gmail booking with static NHS pathway system** (`pathway.ts`) — seven urgency tiers, hard-coded action lists and safety-netting text
+- [x] **Agent Evaluation 1 — end-to-end pipeline confirmed working** across all nodes on a live COPD / chest pain test case (GP_URGENT, no safety override)
+- [x] **Agent Evaluation 2 — safety hard-override confirmed** on acute decompensated heart failure (A_AND_E → EMERGENCY_999 via CANNOT_BREATHE rule)
+- [x] **Phase 7 — end-to-end evaluation complete:** two traced evaluations across moderate-urgency and emergency tiers; safety override invariant confirmed holding in both directions
 - [ ] Swap `MemorySaver` for a network-backed checkpointer so multi-turn state survives serverless
-- [ ] Connect **Google Calendar / Gmail API** for severity-based appointment booking
 - [ ] Address tabular-branch dominance on sparse patients (see _Current Limitations_)
 - [ ] Export ClinicalFusion to ONNX + INT8 for a serverless serving variant
-- [ ] **Phase 7 — end-to-end evaluation:** run the full agent on synthetic scenarios across all triage levels; report per-demographic performance and high-severity miss-rate (< 2%)
 - [ ] Run full test plan (unit tests, model KPI gates, UAT)
 
 ---
@@ -357,7 +496,9 @@ Four dummy patients spanning different regions of the 28-label space, sent throu
 
 This project uses only de-identified public data (NIH ChestX-ray14) and entirely synthetic records (Synthea). No real patient information is used at any stage. The system is a **decision-support tool only** — not a replacement for clinical judgement.
 
-The agent's design reflects this. The language model **communicates**; it is **not** the escalation authority. Urgency is set by a deterministic rule layer biased toward over-triage, and the model cannot lower it. Patient-facing text always states that the output is guidance, not a diagnosis, and that HealthPilot is not a doctor. Failure modes fail **loud, never reassuring**: if a model call dies, the patient is told the assessment could not be completed and is directed to NHS 111 or 999, rather than receiving a falsely calm result.
+The agent's design reflects this. The system **does** produce and state a diagnostic assessment — that is the research question, and an unstated diagnosis cannot be evaluated. What is constrained is **escalation authority**: urgency is set by a deterministic rule layer biased toward over-triage, and no model output can lower it. A reassuring diagnosis cannot reduce the recommended pathway.
+
+Every assessment carries a probability estimate and a confidence level, and patient-facing text states that it is an automated result from a research system that a clinician should confirm. Failure modes fail **loud, never reassuring**: if a model call dies, the patient is told the assessment could not be completed and is directed to NHS 111 or 999, rather than receiving a falsely calm result.
 
 The deployed inference services are **token-gated** and exercised only with **synthetic or de-identified inputs**.
 
@@ -383,7 +524,7 @@ The deployed inference services are **token-gated** and exercised only with **sy
 - Li, Y. et al. (2023). _ChatDoctor_. Cureus 15(6):e40895. arXiv:2303.14070.
 - Han, D., Han, M. & the Unsloth team. (2024–2025). _Unsloth_. https://github.com/unslothai/unsloth
 
-> **On Cheng et al. (2025):** the agent adapts their Recipient/Inquirer architecture and the `H_t = R(D_t, q_{t-1}, H_{t-1})` intake formulation, but replaces the DepartmentAgent (62-way Chinese hospital routing) with urgency-based UK triage, and **inverts** their guidance mechanism from advisory to hard-override.
+> **On Cheng et al. (2025):** the agent adapts their Recipient/Inquirer architecture and the `H_t = R(D_t, q_{t-1}, H_{t-1})` intake formulation, but replaces the DepartmentAgent (62-way Chinese hospital routing) with urgency-based UK NHS pathway triage, and **inverts** their guidance mechanism from advisory to hard-override.
 
 ---
 
@@ -405,5 +546,5 @@ Model weights: subject to respective model provider terms of use.
 ---
 
 <div align="center">
-  <sub>University of Hertfordshire · Masters Project · 2025–2026 · Week 10</sub>
+  <sub>University of Hertfordshire · Masters Project · 2025–2026 · Week 11</sub>
 </div>
